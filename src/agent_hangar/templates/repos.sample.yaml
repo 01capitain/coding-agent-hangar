@@ -1,0 +1,37 @@
+# ~/.agent-control/config/repos.yaml
+#
+# Hangar repository registry. Each entry is a repo `agent-spawn` can attach a
+# worktree to. `default: true` is a sort hint for the interactive spawn list —
+# nothing is ever pre-checked.
+#
+# `bootstrap` runs in the background inside the freshly created worktree, so
+# the agent doesn't lose minutes to `npm ci` / `pnpm install` on startup.
+# `base_branch` is what new worktrees branch from; defaults to origin/main
+# when omitted.
+
+repos:
+  - key: backend
+    name: backend-core-nestjs
+    path: /var/www/backend-core-nestjs
+    default: true
+    bootstrap: npm ci
+    base_branch: origin/main
+
+  - key: frontend
+    name: frontend-hotelkit-web
+    path: /var/www/frontend-hotelkit-web
+    default: true
+    bootstrap: npm ci
+    base_branch: origin/main
+
+  - key: mobile
+    name: hotelkit-react-native
+    path: /var/www/hotelkit-react-native
+    bootstrap: npm ci
+    base_branch: origin/main
+
+  - key: e2e
+    name: playwright-e2e-tests
+    path: /var/www/playwright-e2e-tests
+    bootstrap: npm ci
+    base_branch: origin/main

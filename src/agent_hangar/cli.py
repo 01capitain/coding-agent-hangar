@@ -1,28 +1,25 @@
 """CLI entrypoints registered as console scripts in pyproject.toml.
 
-Phase 0 status: every command parses its documented arguments (so ``--help`` works)
-and exits with a "not implemented yet" message. Phases 1+ replace the stub bodies
-with real behavior; the argparse signatures here are the contract.
+Phases 1+ replace stub bodies with real implementations; stubs for unimplemented
+commands stay so ``--help`` works and callers see a clear "not implemented yet"
+exit code rather than a stack trace.
 """
 
 from __future__ import annotations
 
 import argparse
+import shutil
+import subprocess
 import sys
 
-_NOT_IMPLEMENTED_EXIT = 1
+from . import config
+from . import init as init_mod
+from . import status as status_mod
 
-_STATE_CHOICES = (
-    "STARTING",
-    "WORKING",
-    "NEEDS_FEEDBACK",
-    "BLOCKED",
-    "READY",
-    "DONE",
-    "FAILED",
-    "PAUSED",
-    "STARTING_FAILED",
-)
+_NOT_IMPLEMENTED_EXIT = 1
+_USER_ERROR_EXIT = 2
+
+_STATE_CHOICES = status_mod.VALID_STATES
 
 
 def _stub(name: str) -> None:
@@ -32,11 +29,42 @@ def _stub(name: str) -> None:
 
 def init() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-init",
-        description="Create ~/.agent-control/ layout and a sample repos.yaml.",
+        prog="hangar-init",
+        description="Create ~/.agent-control/ layout and seed repos.yaml.",
     )
     parser.parse_args()
-    _stub("agent-init")
+
+    try:
+        report = init_mod.run_init()
+    except init_mod.InitError as exc:
+        print(f"hangar-init: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    print(f"Hangar root: {report['control_home']}")
+    created = report["created_subdirs"]
+    if created:
+        print(f"Created {len(created)} subdir(s):")
+        for path in created:
+            print(f"  + {path}")
+    else:
+        print("All subdirs already in place.")
+
+    status = report["repos_yaml_status"]
+    repos_path = report["repos_yaml"]
+    if status == "preserved-existing":
+        print(f"repos.yaml: kept existing file at {repos_path}")
+    elif status == "seeded-with-sync-repos":
+        n = report["sync_repos_count"]
+        print(
+            f"repos.yaml: seeded {repos_path} with bundled hotelkit sample "
+            f"+ {n} entr{'y' if n == 1 else 'ies'} from `sync-repos list`."
+        )
+    else:
+        print(
+            f"repos.yaml: seeded {repos_path} with bundled hotelkit sample "
+            "(sync-repos not on PATH)."
+        )
+    print("Done. Edit repos.yaml to match your real repositories before spawning.")
 
 
 def spawn() -> None:
@@ -69,8 +97,15 @@ def status() -> None:
     parser.add_argument("slug")
     parser.add_argument("state", choices=_STATE_CHOICES, help="Workspace state.")
     parser.add_argument("summary", help="One-line status summary.")
-    parser.parse_args()
-    _stub("agent-status")
+    args = parser.parse_args()
+
+    try:
+        record = status_mod.write_status(args.slug, args.state, args.summary)
+    except status_mod.StatusError as exc:
+        print(f"agent-status: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    print(f"[{record.slug}] {record.state}: {record.summary}")
 
 
 def blocked() -> None:
@@ -80,8 +115,34 @@ def blocked() -> None:
     )
     parser.add_argument("slug")
     parser.add_argument("message", help="What is blocking the agent.")
-    parser.parse_args()
-    _stub("agent-blocked")
+    args = parser.parse_args()
+
+    try:
+        record = status_mod.write_status(args.slug, "BLOCKED", args.message)
+    except status_mod.StatusError as exc:
+        print(f"agent-blocked: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    _notify_tmux(record.slug, record.summary)
+    # ASCII bell — rings the terminal even outside tmux.
+    sys.stderr.write("\a")
+    sys.stderr.flush()
+    print(f"[{record.slug}] BLOCKED: {record.summary}")
+
+
+def _notify_tmux(slug: str, message: str) -> None:
+    if shutil.which("tmux") is None:
+        return
+    try:
+        subprocess.run(
+            ["tmux", "display-message", f"[{slug}] BLOCKED: {message}"],
+            check=False,
+            capture_output=True,
+            timeout=2,
+        )
+    except (subprocess.SubprocessError, OSError):
+        # A missing tmux server is fine; we still wrote the status file.
+        pass
 
 
 def dashboard() -> None:
@@ -139,7 +200,44 @@ def list_workspaces() -> None:
         description="List all workspaces and their states.",
     )
     parser.parse_args()
-    _stub("agent-list")
+
+    if not config.status_dir().is_dir():
+        print(
+            "agent-list: control directory missing. Run `hangar-init` first.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    records = status_mod.list_records()
+    if not records:
+        print("(no workspaces yet)")
+        return
+
+    records.sort(key=lambda r: (r.priority(), -r.updated_at.timestamp()))
+    _render_table(records)
+
+
+def _render_table(records: list[status_mod.StatusRecord]) -> None:
+    headers = ("SLUG", "STATE", "UPDATED", "SUMMARY")
+    rows = [
+        (
+            r.slug,
+            r.state,
+            status_mod.relative_age(r.updated_at),
+            r.summary,
+        )
+        for r in records
+    ]
+    widths = [
+        max(len(headers[i]), max(len(row[i]) for row in rows))
+        for i in range(len(headers))
+    ]
+    header_line = "  ".join(headers[i].ljust(widths[i]) for i in range(len(headers)))
+    sep_line = "  ".join("-" * widths[i] for i in range(len(headers)))
+    print(header_line.rstrip())
+    print(sep_line)
+    for row in rows:
+        print("  ".join(row[i].ljust(widths[i]) for i in range(len(row))).rstrip())
 
 
 def close() -> None:

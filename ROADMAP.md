@@ -28,12 +28,12 @@ Lay down the project so contributors (human or agent) can start building.
 
 The dashboard is worthless until something writes to it. Start here.
 
-- [ ] `agent-init` — create `~/.agent-control/{config,status,logs,quotas,templates}` and a sample `repos.yaml`. Validate PyYAML is importable; print an install hint if not.
-- [ ] `agent-status <slug> <state> <summary>` — atomic write of `~/.agent-control/status/<slug>.status` in the PRD's `KEY="value"` format. Append to `~/.agent-control/logs/<slug>.log`.
-- [ ] `agent-blocked <slug> <message>` — wrapper that calls `agent-status … BLOCKED …`, runs `tmux display-message` if tmux is reachable, prints `\a`.
-- [ ] `agent-list` — table of all workspaces from status files. Useful for debugging before the dashboard exists.
+- [x] `hangar-init` — create `~/.agent-control/{config,status,status/archive,logs,quotas,templates}` and seed `repos.yaml` (bundled hotelkit-shaped sample; if `HANGAR_SYNC_REPOS_LIST` points at a path-per-line file or `sync-repos` resolves on `PATH`, append entries from that source so the user has a starting list to curate). Idempotent: refuses to clobber an existing `repos.yaml`. Validate PyYAML is importable; print an install hint if not.
+- [x] `agent-status <slug> <state> <summary>` — atomic write of `~/.agent-control/status/<slug>.status` in the PRD's `KEY="value"` format. Append to `~/.agent-control/logs/<slug>.log`.
+- [x] `agent-blocked <slug> <message>` — wrapper that calls `agent-status … BLOCKED …`, runs `tmux display-message` if tmux is reachable, prints `\a`.
+- [x] `agent-list` — table of all workspaces from status files. Useful for debugging before the dashboard exists.
 
-**Exit criterion:** You can write a status file by hand or via `agent-status`, and `agent-list` shows it.
+**Exit criterion:** You can write a status file by hand or via `agent-status`, and `agent-list` shows it. ✓
 
 ---
 
@@ -129,7 +129,7 @@ Close the workspace lifecycle without destroying work.
 
 The MVP is complete when all of the following work end-to-end:
 
-1. `agent-init` sets up the control directory and validates dependencies.
+1. `hangar-init` sets up the control directory and validates dependencies.
 2. `agent-spawn` (interactive and non-interactive) creates workspaces correctly, including zero-repo workspaces and resume-on-existing.
 3. `agent-status` / `agent-blocked` update status atomically and trigger the bell on BLOCKED transitions.
 4. `agent-dashboard` renders grouped statuses + quota pane and flags stale `WORKING` rows.

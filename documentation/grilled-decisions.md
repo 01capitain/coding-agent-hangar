@@ -132,7 +132,7 @@ repos:
 **Why.** Flat env vars (`REPO_X_NAME`, `REPO_X_PATH`, etc.) get cramped at 9+ repos. YAML is more readable; manual curation keeps it explicit (no surprise auto-discovery of random `.git` directories).
 
 **Consequence.**
-- New dependency: `PyYAML`. `agent-init` checks for it and prints the install command if missing (`apt install python3-yaml` on Debian/Ubuntu, or `pip install pyyaml`).
+- New dependency: `PyYAML`. `hangar-init` checks for it and prints the install command if missing (`apt install python3-yaml` on Debian/Ubuntu, or `pip install pyyaml`).
 - A Python helper (used internally by the spawn flow) loads the YAML and emits shell-evaluable values for any bash glue that needs them.
 - `default: true` is a **sort hint** only — repos with `default: true` sort to the top of the spawn list, but **nothing is pre-checked**. See §9.
 
@@ -256,6 +256,13 @@ No separate "risk: high risk" text label — the color carries it. The two-bar c
 - The Hangar metaphor stays light. We do **not** rename `agent-spawn` to `agent-launch` or `workspace` to `bay`. Command names stay literal and discoverable.
 - Renaming the git repo to `agent-hangar` is a cheap follow-up; not blocking on it.
 
+**Amendment (CLI prefix split).** The command prefix is **not** a single `agent-*` family. It splits by scope:
+
+- **`agent-*`** — operates on a single agent / workspace (`agent-spawn`, `agent-status`, `agent-blocked`, `agent-jump`, `agent-close`, `agent-clean`). The slug is the discriminator.
+- **`hangar-*`** — operates on the hangar itself, not on any one agent (`hangar-init` for now; future meta commands like `hangar-dashboard`, `hangar-cockpit`, `hangar-list`, `hangar-tmux-status`, `hangar-quota-update` are candidates if the same misreading happens).
+
+The trigger was `agent-init`: it reads as "initialize an agent" but actually initializes the control directory at `~/.agent-control/`. `hangar-init` removes the ambiguity. Other meta commands (`agent-dashboard`, `agent-cockpit`, `agent-list`, `agent-tmux-status`, `agent-quota-update`) currently keep their `agent-*` prefix because they don't have the same per-agent / hangar-wide read; rename them later only if the same confusion surfaces.
+
 ---
 
 ## 13. Implementation language — Python-first, bash glue only
@@ -296,7 +303,7 @@ No separate "risk: high risk" text label — the color carries it. The two-bar c
 - `pyproject.toml` declares console scripts:
   ```toml
   [project.scripts]
-  agent-init        = "agent_hangar.cli:init"
+  hangar-init       = "agent_hangar.cli:init"
   agent-spawn       = "agent_hangar.cli:spawn"
   agent-status      = "agent_hangar.cli:status"
   agent-blocked     = "agent_hangar.cli:blocked"
@@ -320,7 +327,7 @@ No separate "risk: high risk" text label — the color carries it. The two-bar c
 
 The v1 MVP ships when the following all work end-to-end:
 
-1. `agent-init` creates `~/.agent-control/` and a sample `repos.yaml`, validates PyYAML is installed.
+1. `hangar-init` creates `~/.agent-control/` and seeds `repos.yaml`, validates PyYAML is installed.
 2. `agent-spawn <slug> <repo>...` creates a workspace, worktrees, `AGENTS.md` + `CLAUDE.md` symlink, `.agent/metadata.env`, `.agent/HANDOFF.md`, `.agent/prompt.md`, and the tmux window. Bootstrap runs in background.
 3. `agent-spawn` interactive mode shows the curated repo list with nothing pre-selected, sorted by `default: true` hint.
 4. `agent-spawn` with an existing slug prompts resume / suffix / abort.

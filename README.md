@@ -61,10 +61,15 @@ pip install --user -e .   # editable install for development
 The `pyproject.toml` registers the `agent-*` commands as console scripts; ensure `~/.local/bin/` is on your `PATH`.
 
 ```bash
-agent-init
+hangar-init
 ```
 
-Creates `~/.agent-control/` and a sample `~/.agent-control/config/repos.yaml`. Edit `repos.yaml` to list your repositories.
+Creates `~/.agent-control/` and a `~/.agent-control/config/repos.yaml`. The repos.yaml is seeded with the bundled hotelkit-shaped sample. If your local repository registry is reachable, entries for each path are appended below the sample so you can curate from a starting list:
+
+- Set `HANGAR_SYNC_REPOS_LIST` to a path-per-line file (recommended when `sync-repos` is a shell alias — subprocess can't see aliases). Example for the zsh-alias setup: `export HANGAR_SYNC_REPOS_LIST="$HOME/Documents/ZSH Aliases/sync-repos/repository-list.txt"`.
+- Otherwise, if `sync-repos` resolves via `which`, the bundled detection calls `sync-repos list` and parses its stdout.
+
+Re-running `hangar-init` is idempotent (it won't clobber an existing `repos.yaml`).
 
 ## Configuration
 
@@ -107,6 +112,7 @@ AGENT_TMUX_SESSION="agents"
 AGENT_BASE_BRANCH="origin/main"
 AGENT_COMMAND="claude"
 AGENT_STALE_MINUTES="30"
+HANGAR_SYNC_REPOS_LIST=""                      # path-per-line file consumed by hangar-init
 ```
 
 If you want workspaces under `/var/www/agent-work/` (for nginx wildcard vhosts), set `AGENT_WORK_HOME=/var/www/agent-work`.
@@ -144,7 +150,7 @@ agent-clean permissions-refactor      # guided interactive cleanup checklist
 
 | Command                                 | Purpose                                                                                                                                  |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent-init`                            | Create `~/.agent-control/` layout and a sample `repos.yaml`.                                                                             |
+| `hangar-init`                           | Create `~/.agent-control/` layout and seed `repos.yaml` (hotelkit sample + `sync-repos list` entries when available).                    |
 | `agent-cockpit`                         | Create or attach the `agents` tmux session and open the cockpit window.                                                                  |
 | `agent-spawn [slug] [repo...]`          | Create a workspace. Interactive when args omitted; prompts resume/suffix/abort if slug exists. Pass zero repos for a planning workspace. |
 | `agent-status <slug> <state> <summary>` | Update the workspace's status file. Atomic write.                                                                                        |

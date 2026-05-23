@@ -12,7 +12,7 @@ import pytest
 from agent_hangar import cli
 
 CLI_FUNCTIONS = [
-    ("agent-init", "init"),
+    ("hangar-init", "init"),
     ("agent-spawn", "spawn"),
     ("agent-status", "status"),
     ("agent-blocked", "blocked"),
