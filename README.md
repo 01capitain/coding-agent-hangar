@@ -1,6 +1,6 @@
 # Agent Hangar
 
-> Repo handle: `coding-agent-dashboard`. Status: pre-alpha; nothing is implemented yet — this is the planning + skeleton phase.
+> Status: pre-alpha; nothing is implemented yet — this is the planning + skeleton phase.
 
 Agent Hangar is a local control plane for running parallel AI coding agents in tmux. It spawns isolated workspaces with git worktrees, generates the agent instructions, and surfaces every agent's status — including shared Claude usage quota — so you can see at a glance which agents need attention without flipping between terminal windows.
 
@@ -75,7 +75,7 @@ repos:
   - key: backend
     name: backend-core-nestjs
     path: /var/www/backend-core-nestjs
-    default: true          # sort hint only; NOT pre-checked
+    default: true # sort hint only; NOT pre-checked
     bootstrap: npm ci
     base_branch: origin/main
 
@@ -142,20 +142,20 @@ agent-clean permissions-refactor      # guided interactive cleanup checklist
 
 ## Commands
 
-| Command | Purpose |
-|---|---|
-| `agent-init` | Create `~/.agent-control/` layout and a sample `repos.yaml`. |
-| `agent-cockpit` | Create or attach the `agents` tmux session and open the cockpit window. |
-| `agent-spawn [slug] [repo...]` | Create a workspace. Interactive when args omitted; prompts resume/suffix/abort if slug exists. Pass zero repos for a planning workspace. |
-| `agent-status <slug> <state> <summary>` | Update the workspace's status file. Atomic write. |
-| `agent-blocked <slug> <message>` | Set state to `BLOCKED`, send tmux display-message, ring the bell. |
-| `agent-dashboard` | Render grouped statuses + quota pane. Use under `watch -n 2` in the cockpit. |
-| `agent-tmux-status` | Print the compact one-line status summary for use in tmux `status-right`. |
-| `agent-jump <slug\|blocked\|feedback>` | Switch tmux to a workspace; with `blocked`/`feedback` picks the next match. |
-| `agent-list` | List all workspaces and their states. |
-| `agent-close <slug>` | Mark workspace `DONE` or `PAUSED`; optionally kill its tmux window. Does **not** remove worktrees. |
-| `agent-clean <slug>` | Guided interactive cleanup. Refuses uncommitted work without `--force`. |
-| `agent-quota-update` | Read Claude statusline JSON from stdin, normalize, write `~/.agent-control/quotas/claude.json`. |
+| Command                                 | Purpose                                                                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent-init`                            | Create `~/.agent-control/` layout and a sample `repos.yaml`.                                                                             |
+| `agent-cockpit`                         | Create or attach the `agents` tmux session and open the cockpit window.                                                                  |
+| `agent-spawn [slug] [repo...]`          | Create a workspace. Interactive when args omitted; prompts resume/suffix/abort if slug exists. Pass zero repos for a planning workspace. |
+| `agent-status <slug> <state> <summary>` | Update the workspace's status file. Atomic write.                                                                                        |
+| `agent-blocked <slug> <message>`        | Set state to `BLOCKED`, send tmux display-message, ring the bell.                                                                        |
+| `agent-dashboard`                       | Render grouped statuses + quota pane. Use under `watch -n 2` in the cockpit.                                                             |
+| `agent-tmux-status`                     | Print the compact one-line status summary for use in tmux `status-right`.                                                                |
+| `agent-jump <slug\|blocked\|feedback>`  | Switch tmux to a workspace; with `blocked`/`feedback` picks the next match.                                                              |
+| `agent-list`                            | List all workspaces and their states.                                                                                                    |
+| `agent-close <slug>`                    | Mark workspace `DONE` or `PAUSED`; optionally kill its tmux window. Does **not** remove worktrees.                                       |
+| `agent-clean <slug>`                    | Guided interactive cleanup. Refuses uncommitted work without `--force`.                                                                  |
+| `agent-quota-update`                    | Read Claude statusline JSON from stdin, normalize, write `~/.agent-control/quotas/claude.json`.                                          |
 
 ## Status states
 
@@ -257,6 +257,10 @@ coding-agent-dashboard/
 - `documentation/initial-prd.md` — the original product requirements.
 - `documentation/initial-implementation-plan.md` — the original implementation plan.
 - `documentation/grilled-decisions.md` — **authoritative** when it disagrees with the PRD/plan. Read this first if you're contributing.
+
+## Prior art
+
+- [manaflow-ai/cmux](https://github.com/manaflow-ai/cmux) — native macOS app for managing parallel coding agents through panes/tabs/sidebar, with cross-backend resume hooks for ~13 agents (Claude Code, Codex, Cursor CLI, Gemini, etc.). Different platform and surface than Agent Hangar (GUI vs. tmux + filesystem), no quota tracking, no worktree isolation. Useful as a feature-idea source: per-pane PR status, listening-port surfacing, OSC notification ingestion, browser-pane scripting for agents. See `ROADMAP.md` Post-MVP entries and `documentation/grilled-decisions.md` §15 for which of those have been queued and which are open questions.
 
 ## License
 

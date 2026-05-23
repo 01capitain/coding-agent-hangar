@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-hangar"
+version = "0.0.1"
+description = "Local control plane for running parallel AI coding agents in tmux."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Stephan Lange" }]
+keywords = ["tmux", "claude", "ai", "agents", "worktree", "dashboard"]
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+agent-init         = "agent_hangar.cli:init"
+agent-spawn        = "agent_hangar.cli:spawn"
+agent-status       = "agent_hangar.cli:status"
+agent-blocked      = "agent_hangar.cli:blocked"
+agent-dashboard    = "agent_hangar.cli:dashboard"
+agent-tmux-status  = "agent_hangar.cli:tmux_status"
+agent-quota-update = "agent_hangar.cli:quota_update"
+agent-cockpit      = "agent_hangar.cli:cockpit"
+agent-jump         = "agent_hangar.cli:jump"
+agent-list         = "agent_hangar.cli:list_workspaces"
+agent-close        = "agent_hangar.cli:close"
+agent-clean        = "agent_hangar.cli:clean"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

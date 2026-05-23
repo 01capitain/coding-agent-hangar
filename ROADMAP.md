@@ -15,12 +15,12 @@ Lay down the project so contributors (human or agent) can start building.
 - [x] `documentation/grilled-decisions.md` — authoritative decisions
 - [x] `README.md`
 - [x] `ROADMAP.md` (this file)
-- [ ] `pyproject.toml` with all `agent-*` entry points (stubs OK)
-- [ ] `src/agent_hangar/` package skeleton with empty modules
-- [ ] `tests/` skeleton (pytest config, smoke test that imports run)
-- [ ] CI config (lint + tests on push) — single workflow, nothing fancy
+- [x] `pyproject.toml` with all `agent-*` entry points (stubs OK)
+- [x] `src/agent_hangar/` package skeleton with empty modules
+- [x] `tests/` skeleton (pytest config, smoke test that imports run)
+- [x] CI config (lint + tests on push) — single workflow, nothing fancy
 
-**Exit criterion:** `pipx install .` succeeds; every `agent-*` command exists and prints a "not implemented yet" stub with `--help` working.
+**Exit criterion:** `pipx install .` succeeds; every `agent-*` command exists and prints a "not implemented yet" stub with `--help` working. ✓
 
 ---
 
@@ -148,10 +148,12 @@ The MVP is complete when all of the following work end-to-end:
 After the MVP lands and gets a few weeks of real use, layer on the next set of improvements based on observed pain.
 
 - **Push notifications.** WSL-friendly `notify-send` (via WSLg) or PowerShell BurntToast, plus a generic webhook hook. Triggered on the same transitions that ring the bell today.
+- **`agent-notify` + OSC ingestion.** Generalize `agent-blocked` into `agent-notify <slug> <severity> <message>` so any backend can yell with structured intent (info / feedback / blocked / ready). Wire a listener for OSC 9 / 99 / 777 terminal-notification sequences emitted from the agent shell, so backends that already speak that standard drive status without a bespoke wrapper. Becomes a third reliability channel alongside instructions and heartbeat (see `documentation/grilled-decisions.md` §2). Lays the groundwork for cross-backend pluggability without committing to it yet.
 - **Claude Code hook integration.** `SessionStart` → `WORKING`, `Stop` → `READY` or `DONE`, hook into prompt submission to bump `UPDATED_AT`. Backend-specific; opt-in via config.
 - **Event-log pane.** `agent-status` already appends to `~/.agent-control/logs/<slug>.log`; surface the last N lines per workspace in the cockpit.
 - **fzf integration.** Use `fzf` when installed for repo selection in `agent-spawn`, blocked-agent picker in `agent-jump`, workspace selection in `agent-close` / `agent-clean`.
 - **`agent-pr <slug>`.** Push the agent branch and open a PR per repo via `gh` or `git push -u`. Captures the harvest workflow once it's been done by hand enough times to know what's right.
+- **PR status per workspace.** Surface each worktree's linked PR (open / draft / merged / changes-requested / failing-CI) in the dashboard, next to the branch. Source: `gh pr view --json state,number,reviewDecision,statusCheckRollup` per agent branch, cached with a short TTL so the watched dashboard render stays cheap; degrade to "no PR" when `gh` is missing or the branch is unpushed. Concrete payoff: a `READY` workspace whose PR is `MERGED` is the one-keystroke follow-up to `agent-clean`; a `READY` workspace with `CHANGES_REQUESTED` is the obvious candidate to spawn a fixup agent against. Pairs naturally with `agent-pr <slug>` — that command writes the link, this one reads it back.
 - **`agent-diff <slug>`.** Export diffs for every worktree to a known location for review.
 - **`agent-refresh <slug>`.** Carefully designed fetch + rebase/merge with confirmation. Risky enough that it gets its own phase.
 - **`.env` propagation.** Copy or template `.env` files from the canonical repo into the worktree if a per-repo rule says so.
