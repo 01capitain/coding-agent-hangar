@@ -30,7 +30,7 @@ The dashboard is worthless until something writes to it. Start here.
 
 - [x] `hangar-setup` — create `~/.agent-control/{config,status,status/archive,logs,quotas,templates}` and seed `repos.yaml` from the bundled hotelkit-shaped sample. Idempotent: refuses to clobber an existing `repos.yaml`. Validate PyYAML is importable; print an install hint if not.
 - [x] `agent-status <slug> <state> <summary>` — atomic write of `~/.agent-control/status/<slug>.status` in the PRD's `KEY="value"` format. Append to `~/.agent-control/logs/<slug>.log`.
-- [x] `agent-blocked <slug> <message>` — wrapper that calls `agent-status … BLOCKED …`, runs `tmux display-message` if tmux is reachable, prints `\a`.
+- [x] `agent-mark-as-blocked <slug> <message>` — wrapper that calls `agent-status … BLOCKED …`, runs `tmux display-message` if tmux is reachable, prints `\a`.
 - [x] `agent-list` — table of all workspaces from status files. Useful for debugging before the dashboard exists.
 
 **Exit criterion:** You can write a status file by hand or via `agent-status`, and `agent-list` shows it. ✓
@@ -44,7 +44,7 @@ Make the status visible.
 - [ ] `hangar-watch` — render grouped statuses in priority order: BLOCKED → NEEDS_FEEDBACK → FAILED → STARTING_FAILED → READY → WORKING → STARTING → PAUSED → DONE. Compute "minutes since `UPDATED_AT`"; flag `WORKING` rows older than `AGENT_STALE_MINUTES` (default 30) as `[stale]`. Handle missing/partial status files gracefully.
 - [ ] `hangar-checkin` — create / attach the `agents` tmux session; create / reuse the `cockpit` window with a layout that runs `watch -n 2 hangar-watch` in the main pane and a shell in a side pane.
 - [ ] `hangar-statusline` — print the compact one-liner `[B:n] [F:n] [R:n] [W:n] | 5h:U%/E% 7d:U%/E%` with ANSI color codes. Document the `set -g status-right` snippet in README.
-- [ ] Bell-on-transition: `agent-blocked` (and any state transition into BLOCKED) triggers `tmux display-message` + `\a`. Steady-state silence.
+- [ ] Bell-on-transition: `agent-mark-as-blocked` (and any state transition into BLOCKED) triggers `tmux display-message` + `\a`. Steady-state silence.
 
 **Exit criterion:** You can manually write a few status files, run `hangar-checkin`, see them grouped, and the tmux status line updates from any window.
 
@@ -131,7 +131,7 @@ The MVP is complete when all of the following work end-to-end:
 
 1. `hangar-setup` sets up the control directory and validates dependencies.
 2. `agent-spawn` (interactive and non-interactive) creates workspaces correctly, including zero-repo workspaces and resume-on-existing.
-3. `agent-status` / `agent-blocked` update status atomically and trigger the bell on BLOCKED transitions.
+3. `agent-status` / `agent-mark-as-blocked` update status atomically and trigger the bell on BLOCKED transitions.
 4. `hangar-watch` renders grouped statuses + quota pane and flags stale `WORKING` rows.
 5. `hangar-statusline` produces a usable status-line one-liner consumed by the user's `~/.tmux.conf`.
 6. `hangar-checkin` opens the cockpit window with the watched dashboard.
@@ -148,7 +148,7 @@ The MVP is complete when all of the following work end-to-end:
 After the MVP lands and gets a few weeks of real use, layer on the next set of improvements based on observed pain.
 
 - **Push notifications.** WSL-friendly `notify-send` (via WSLg) or PowerShell BurntToast, plus a generic webhook hook. Triggered on the same transitions that ring the bell today.
-- **`agent-notify` + OSC ingestion.** Generalize `agent-blocked` into `agent-notify <slug> <severity> <message>` so any backend can yell with structured intent (info / feedback / blocked / ready). Wire a listener for OSC 9 / 99 / 777 terminal-notification sequences emitted from the agent shell, so backends that already speak that standard drive status without a bespoke wrapper. Becomes a third reliability channel alongside instructions and heartbeat (see `documentation/grilled-decisions.md` §2). Lays the groundwork for cross-backend pluggability without committing to it yet.
+- **`agent-notify` + OSC ingestion.** Generalize `agent-mark-as-blocked` into `agent-notify <slug> <severity> <message>` so any backend can yell with structured intent (info / feedback / blocked / ready). Wire a listener for OSC 9 / 99 / 777 terminal-notification sequences emitted from the agent shell, so backends that already speak that standard drive status without a bespoke wrapper. Becomes a third reliability channel alongside instructions and heartbeat (see `documentation/grilled-decisions.md` §2). Lays the groundwork for cross-backend pluggability without committing to it yet.
 - **Claude Code hook integration.** `SessionStart` → `WORKING`, `Stop` → `READY` or `DONE`, hook into prompt submission to bump `UPDATED_AT`. Backend-specific; opt-in via config.
 - **Event-log pane.** `agent-status` already appends to `~/.agent-control/logs/<slug>.log`; surface the last N lines per workspace in the cockpit.
 - **fzf integration.** Use `fzf` when installed for repo selection in `agent-spawn`, blocked-agent picker in `agent-jump`, workspace selection in `agent-close` / `agent-clean`.

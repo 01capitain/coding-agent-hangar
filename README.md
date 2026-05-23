@@ -123,7 +123,7 @@ From inside the agent session:
 
 ```bash
 agent-status permissions-refactor WORKING "Inspecting permission checks in backend"
-agent-blocked permissions-refactor "Should missing access return 403 or 404?"
+agent-mark-as-blocked permissions-refactor "Should missing access return 403 or 404?"
 ```
 
 From the cockpit (or anywhere):
@@ -160,7 +160,7 @@ Commands split by domain. `agent-*` commands deal with agents themselves — one
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `agent-spawn [slug] [repo...]`          | Create a workspace. Interactive when args omitted; prompts resume/suffix/abort if slug exists. Pass zero repos for a planning workspace. |
 | `agent-status <slug> <state> <summary>` | Update one workspace's status file. Atomic write.                                                                                        |
-| `agent-blocked <slug> <message>`        | Set state to `BLOCKED`, send tmux display-message, ring the bell.                                                                        |
+| `agent-mark-as-blocked <slug> <message>`| Set state to `BLOCKED`, send tmux display-message, ring the bell.                                                                        |
 | `agent-list`                            | Plain ASCII table of every agent and its state. The simple, scriptable view used outside the cockpit.                                    |
 | `agent-jump <slug\|blocked\|feedback>`  | Switch tmux to an agent's workspace; with `blocked`/`feedback` picks the next match.                                                     |
 | `agent-close <slug>`                    | Mark workspace `DONE` or `PAUSED`; optionally kill its tmux window. Does **not** remove worktrees.                                       |

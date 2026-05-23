@@ -19,7 +19,7 @@ CLI_FUNCTIONS = [
     ("hangar-quota-update", "quota_update"),
     ("agent-spawn", "spawn"),
     ("agent-status", "status"),
-    ("agent-blocked", "blocked"),
+    ("agent-mark-as-blocked", "blocked"),
     ("agent-list", "list_workspaces"),
     ("agent-jump", "jump"),
     ("agent-close", "close"),

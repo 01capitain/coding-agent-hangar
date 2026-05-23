@@ -259,7 +259,7 @@ No separate "risk: high risk" text label — the color carries it. The two-bar c
 **Amendment (CLI prefix split, revised).** The command prefix is **not** a single `agent-*` family. It splits by **domain**, not by "does it take a slug":
 
 - **`agent-*`** — the domain is agents themselves, whether one or many. Members:
-  - `agent-spawn`, `agent-status`, `agent-blocked`, `agent-jump`, `agent-close`, `agent-clean` (slug-bound)
+  - `agent-spawn`, `agent-status`, `agent-mark-as-blocked`, `agent-jump`, `agent-close`, `agent-clean` (slug-bound)
   - `agent-list` (operates on the *collection* of agents, but the domain is still agents — same way `git log` is about commits, not about git itself).
 - **`hangar-*`** — the domain is the hangar's infrastructure: bootstrap, monitoring stations, plumbing wired into other tools. Members:
   - `hangar-setup` — one-time bootstrap of the control directory.
@@ -323,7 +323,7 @@ Verb choices for the `hangar-*` family were picked to disambiguate names that ha
   hangar-quota-update = "agent_hangar.cli:quota_update"
   agent-spawn         = "agent_hangar.cli:spawn"
   agent-status        = "agent_hangar.cli:status"
-  agent-blocked       = "agent_hangar.cli:blocked"
+  agent-mark-as-blocked       = "agent_hangar.cli:blocked"
   agent-list          = "agent_hangar.cli:list_workspaces"
   agent-jump          = "agent_hangar.cli:jump"
   agent-close         = "agent_hangar.cli:close"
@@ -344,7 +344,7 @@ The v1 MVP ships when the following all work end-to-end:
 2. `agent-spawn <slug> <repo>...` creates a workspace, worktrees, `AGENTS.md` + `CLAUDE.md` symlink, `.agent/metadata.env`, `.agent/HANDOFF.md`, `.agent/prompt.md`, and the tmux window. Bootstrap runs in background.
 3. `agent-spawn` interactive mode shows the curated repo list with nothing pre-selected, sorted by `default: true` hint.
 4. `agent-spawn` with an existing slug prompts resume / suffix / abort.
-5. `agent-status` and `agent-blocked` update the slug's status file atomically.
+5. `agent-status` and `agent-mark-as-blocked` update the slug's status file atomically.
 6. `hangar-watch` renders grouped statuses + quota pane in the cockpit window. Stale `WORKING` rows are flagged.
 7. `hangar-statusline` emits the compact one-line summary for the tmux status bar.
 8. `hangar-checkin` creates / attaches the `agents` session and `cockpit` window with the dashboard running in `watch`.

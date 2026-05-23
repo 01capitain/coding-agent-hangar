@@ -101,7 +101,7 @@ def status() -> None:
 
 def blocked() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-blocked",
+        prog="agent-mark-as-blocked",
         description="Set state to BLOCKED, run tmux display-message, ring the bell.",
     )
     parser.add_argument("slug")
@@ -111,7 +111,7 @@ def blocked() -> None:
     try:
         record = status_mod.write_status(args.slug, "BLOCKED", args.message)
     except status_mod.StatusError as exc:
-        print(f"agent-blocked: {exc}", file=sys.stderr)
+        print(f"agent-mark-as-blocked: {exc}", file=sys.stderr)
         sys.exit(_USER_ERROR_EXIT)
 
     _notify_tmux(record.slug, record.summary)

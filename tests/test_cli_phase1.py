@@ -76,7 +76,7 @@ def test_agent_status_rejects_unknown_state(
     assert rc == 2
 
 
-def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
+def test_agent_mark_as_blocked_writes_status_rings_bell_and_calls_tmux(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run(monkeypatch, cli.init, ["hangar-setup"])
@@ -95,7 +95,7 @@ def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
     monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
-    rc = _run(monkeypatch, cli.blocked, ["agent-blocked", "alpha", "Need API token"])
+    rc = _run(monkeypatch, cli.blocked, ["agent-mark-as-blocked", "alpha", "Need API token"])
     assert rc == 0
     captured = capsys.readouterr()
     assert "\a" in captured.err
@@ -105,7 +105,7 @@ def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
     assert any("Need API token" in part for part in tmux_calls[0])
 
 
-def test_agent_blocked_does_not_fail_without_tmux(
+def test_agent_mark_as_blocked_does_not_fail_without_tmux(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _run(monkeypatch, cli.init, ["hangar-setup"])
@@ -113,7 +113,7 @@ def test_agent_blocked_does_not_fail_without_tmux(
 
     monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
 
-    rc = _run(monkeypatch, cli.blocked, ["agent-blocked", "beta", "stuck"])
+    rc = _run(monkeypatch, cli.blocked, ["agent-mark-as-blocked", "beta", "stuck"])
     assert rc == 0
 
 
