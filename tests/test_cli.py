@@ -22,8 +22,8 @@ CLI_FUNCTIONS = [
     ("agent-mark-as-blocked", "blocked"),
     ("agent-list", "list_workspaces"),
     ("agent-jump", "jump"),
-    ("agent-close", "close"),
-    ("agent-clean", "clean"),
+    ("agent-mark-done", "mark_done"),
+    ("agent-teardown", "teardown"),
 ]
 
 

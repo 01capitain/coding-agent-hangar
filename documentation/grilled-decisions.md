@@ -193,7 +193,7 @@ repos:
 2. **Suffix** — create `<slug>-2`, `<slug>-3`, etc.
 3. **Abort.**
 
-**Decision (cleanup).** `agent-clean <slug>` is a **guided interactive checklist**, not automation. It walks the user through cleanup, refusing dangerous moves:
+**Decision (teardown).** `agent-teardown <slug>` is a **guided interactive checklist**, not automation. It walks the user through teardown, refusing dangerous moves:
 
 1. Show workspace path, list of worktrees, current statuses (`git status -sb` per worktree).
 2. Show whether the agent branch was merged into base branch on origin.
@@ -201,14 +201,16 @@ repos:
 4. Walk the user through prompts: "PR opened? [y/N]", "PR merged? [y/N]", "OK to remove worktree at X? [y/N]", "OK to delete agent branch agent/<slug>/<repo>? [y/N]".
 5. On confirmation, run `git worktree remove`, delete branches, archive the status file to `~/.agent-control/status/archive/<slug>-<timestamp>.status`, remove the workspace dir.
 
-No auto-cleanup based on age or status in v1. The principle is: **collect evidence of the real cleanup steps before committing to automation.**
+No auto-teardown based on age or status in v1. The principle is: **collect evidence of the real teardown steps before committing to automation.**
 
-**Why.** Worktrees aren't supposed to outlive the work they hold. But automating cleanup before you know the real workflow risks deleting unmerged work or losing context. A guided checklist captures the human-in-the-loop reality and produces the evidence base for later automation.
+**Why.** Worktrees aren't supposed to outlive the work they hold. But automating teardown before you know the real workflow risks deleting unmerged work or losing context. A guided checklist captures the human-in-the-loop reality and produces the evidence base for later automation.
+
+**Decision (done signal).** `agent-mark-done <slug> <summary>` mirrors `agent-mark-as-blocked`: state transition + bell + tmux display-message. It is **not** a teardown — it just yells "this agent is done, come look." The common flow is: the agent calls `agent-mark-done`, the user jumps to the tmux window, reads the work, and either gives the next instruction in the same window or proceeds to `agent-teardown`. The PRD's `agent-close` (which conflated state change with optional tmux-window killing) is dropped: state-only changes go through the generic `agent-status`, the bell-ringing variant for DONE is `agent-mark-done`, and any tmux-window-killing happens during `agent-teardown` if at all.
 
 **Consequence.**
-- `agent-close <slug>` (PRD §11.2) becomes a lighter operation: set status to `DONE` or `PAUSED`, optionally kill the tmux window. Does NOT remove worktrees. Use `agent-clean` for that.
-- Slug uniqueness scope: **active only**. A cleaned-up slug is available for reuse (archived status file lives in `archive/` so no name collision).
+- Slug uniqueness scope: **active only**. A torn-down slug is available for reuse (archived status file lives in `archive/` so no name collision).
 - Atomic status writes (temp file + rename) prevent partial writes during concurrent updates.
+- The `PAUSED` state is reached via the generic `agent-status <slug> PAUSED <summary>` — no dedicated wrapper. Pausing is rare and intentional; the friction is fine.
 
 ---
 
@@ -259,7 +261,7 @@ No separate "risk: high risk" text label — the color carries it. The two-bar c
 **Amendment (CLI prefix split, revised).** The command prefix is **not** a single `agent-*` family. It splits by **domain**, not by "does it take a slug":
 
 - **`agent-*`** — the domain is agents themselves, whether one or many. Members:
-  - `agent-spawn`, `agent-status`, `agent-mark-as-blocked`, `agent-jump`, `agent-close`, `agent-clean` (slug-bound)
+  - `agent-spawn`, `agent-status`, `agent-mark-as-blocked`, `agent-mark-done`, `agent-jump`, `agent-teardown` (slug-bound)
   - `agent-list` (operates on the *collection* of agents, but the domain is still agents — same way `git log` is about commits, not about git itself).
 - **`hangar-*`** — the domain is the hangar's infrastructure: bootstrap, monitoring stations, plumbing wired into other tools. Members:
   - `hangar-setup` — one-time bootstrap of the control directory.
@@ -326,8 +328,8 @@ Verb choices for the `hangar-*` family were picked to disambiguate names that ha
   agent-mark-as-blocked       = "agent_hangar.cli:blocked"
   agent-list          = "agent_hangar.cli:list_workspaces"
   agent-jump          = "agent_hangar.cli:jump"
-  agent-close         = "agent_hangar.cli:close"
-  agent-clean         = "agent_hangar.cli:clean"
+  agent-mark-done     = "agent_hangar.cli:mark_done"
+  agent-teardown      = "agent_hangar.cli:teardown"
   ```
 - Install via `pipx install .` (preferred — isolated) or `pip install --user -e .` (editable for development).
 - Dependencies: `PyYAML`. Maybe `rich` for the dashboard renderer; evaluate once we have a v1 to look at — pure ANSI may be sufficient.
@@ -351,14 +353,14 @@ The v1 MVP ships when the following all work end-to-end:
 9. `agent-jump <slug|blocked|feedback>` switches tmux. Multi-match: interactive list.
 10. `hangar-quota-update` reads Claude statusline JSON from stdin and writes normalized `~/.agent-control/quotas/claude.json`. Graceful on missing fields.
 11. The cockpit dashboard still renders when quota data is missing.
-12. `agent-clean <slug>` walks the user through guided cleanup, refusing to remove uncommitted work without `--force`.
+12. `agent-mark-done <slug> <summary>` signals completion (mirroring `agent-mark-as-blocked`); `agent-teardown <slug>` walks the user through guided teardown, refusing to remove uncommitted work without `--force`.
 
 Explicitly **deferred** beyond v1:
 
 - Push / desktop notifications.
 - Claude Code hook integration for auto-status.
 - Output-scraping wrappers.
-- `agent-close` (light close, not destructive cleanup — easy add but lower priority than `agent-clean`).
+- `agent-mark-done` (the lightweight done signal — easy add but lower priority than `agent-teardown`).
 - `fzf` integration for selection.
 - Event-log pane.
 - `agent-diff`, `agent-refresh`, `agent-pr`.

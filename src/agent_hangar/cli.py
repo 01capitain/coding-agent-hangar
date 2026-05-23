@@ -239,29 +239,35 @@ def _render_table(records: list[status_mod.StatusRecord]) -> None:
         print("  ".join(row[i].ljust(widths[i]) for i in range(len(row))).rstrip())
 
 
-def close() -> None:
+def mark_done() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-close",
+        prog="agent-mark-done",
         description=(
-            "Mark workspace DONE or PAUSED; optionally kill its tmux window. "
-            "Does NOT remove worktrees — use agent-clean for that."
+            "Set state to DONE, run tmux display-message, ring the bell. "
+            "Mirror of agent-mark-as-blocked. Does NOT touch worktrees, "
+            "branches, or the tmux window — use agent-teardown for that."
         ),
     )
     parser.add_argument("slug")
+    parser.add_argument("summary", help="One-line summary of what was done.")
     parser.parse_args()
-    _stub("agent-close")
+    _stub("agent-mark-done")
 
 
-def clean() -> None:
+def teardown() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-clean",
-        description="Guided interactive cleanup of a workspace.",
+        prog="agent-teardown",
+        description=(
+            "Guided interactive teardown of an agent's workspace: remove worktrees, "
+            "delete branches, archive the status file, remove the workspace dir. "
+            "Irreversible. Refuses uncommitted work without --force."
+        ),
     )
     parser.add_argument("slug")
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Allow cleanup of workspaces with uncommitted changes.",
+        help="Allow teardown of workspaces with uncommitted changes.",
     )
     parser.parse_args()
-    _stub("agent-clean")
+    _stub("agent-teardown")

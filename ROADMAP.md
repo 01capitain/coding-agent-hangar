@@ -109,19 +109,19 @@ Closing the loop from dashboard back to a specific agent.
 
 ---
 
-## Phase 7 — Guided cleanup
+## Phase 7 — Done signal + guided teardown
 
 Close the workspace lifecycle without destroying work.
 
-- [ ] `agent-close <slug>` — set status to `DONE` or `PAUSED`. Optionally kill the tmux window after explicit prompt. Does not touch worktrees.
-- [ ] `agent-clean <slug>` — guided interactive checklist:
+- [ ] `agent-mark-done <slug> <summary>` — mirror of `agent-mark-as-blocked`: set state to `DONE`, append to the log, ring the bell, tmux display-message. Lightweight; the user typically reads the summary and either gives the next instruction in the same tmux window or moves on to `agent-teardown`. Does NOT touch worktrees, branches, or the tmux window. (For the rare `PAUSED` state, use the generic `agent-status` — no dedicated wrapper.)
+- [ ] `agent-teardown <slug>` — guided interactive checklist:
   1. Show workspace path, list of worktrees, per-worktree `git status -sb`.
   2. Show whether `agent/<slug>/<repo>` is merged into base branch on origin.
   3. Show uncommitted changes; refuse to proceed without `--force` if any.
   4. Prompt: "PR opened? [y/N]", "PR merged? [y/N]", "Remove worktree at X? [y/N]", "Delete branch agent/<slug>/<repo>? [y/N]".
   5. On confirmation: `git worktree remove`, delete branches, archive status file to `~/.agent-control/status/archive/<slug>-<timestamp>.status`, remove workspace dir.
 
-**Exit criterion:** A merged feature can be cleaned without surprises; uncommitted work blocks cleanup; archived status files exist after cleanup.
+**Exit criterion:** An agent can mark itself done from inside its session; a merged feature can be torn down without surprises; uncommitted work blocks teardown; archived status files exist after teardown.
 
 ---
 
@@ -138,7 +138,7 @@ The MVP is complete when all of the following work end-to-end:
 7. `agent-jump` works for `<slug>`, `blocked`, and `feedback`.
 8. `hangar-quota-update` normalizes Claude statusline JSON and the dashboard degrades gracefully when quota data is missing.
 9. `agent-list` lists all workspaces.
-10. `agent-close` and `agent-clean` cover the close + harvest paths; cleanup refuses to nuke uncommitted work.
+10. `agent-mark-done` signals completion (mirroring `agent-mark-as-blocked`); `agent-teardown` covers the irreversible cleanup path and refuses to nuke uncommitted work.
 11. Documentation in `README.md` and `documentation/grilled-decisions.md` is current.
 
 ---
@@ -151,9 +151,9 @@ After the MVP lands and gets a few weeks of real use, layer on the next set of i
 - **`agent-notify` + OSC ingestion.** Generalize `agent-mark-as-blocked` into `agent-notify <slug> <severity> <message>` so any backend can yell with structured intent (info / feedback / blocked / ready). Wire a listener for OSC 9 / 99 / 777 terminal-notification sequences emitted from the agent shell, so backends that already speak that standard drive status without a bespoke wrapper. Becomes a third reliability channel alongside instructions and heartbeat (see `documentation/grilled-decisions.md` §2). Lays the groundwork for cross-backend pluggability without committing to it yet.
 - **Claude Code hook integration.** `SessionStart` → `WORKING`, `Stop` → `READY` or `DONE`, hook into prompt submission to bump `UPDATED_AT`. Backend-specific; opt-in via config.
 - **Event-log pane.** `agent-status` already appends to `~/.agent-control/logs/<slug>.log`; surface the last N lines per workspace in the cockpit.
-- **fzf integration.** Use `fzf` when installed for repo selection in `agent-spawn`, blocked-agent picker in `agent-jump`, workspace selection in `agent-close` / `agent-clean`.
+- **fzf integration.** Use `fzf` when installed for repo selection in `agent-spawn`, blocked-agent picker in `agent-jump`, workspace selection in `agent-teardown`.
 - **`agent-pr <slug>`.** Push the agent branch and open a PR per repo via `gh` or `git push -u`. Captures the harvest workflow once it's been done by hand enough times to know what's right.
-- **PR status per workspace.** Surface each worktree's linked PR (open / draft / merged / changes-requested / failing-CI) in the dashboard, next to the branch. Source: `gh pr view --json state,number,reviewDecision,statusCheckRollup` per agent branch, cached with a short TTL so the watched dashboard render stays cheap; degrade to "no PR" when `gh` is missing or the branch is unpushed. Concrete payoff: a `READY` workspace whose PR is `MERGED` is the one-keystroke follow-up to `agent-clean`; a `READY` workspace with `CHANGES_REQUESTED` is the obvious candidate to spawn a fixup agent against. Pairs naturally with `agent-pr <slug>` — that command writes the link, this one reads it back.
+- **PR status per workspace.** Surface each worktree's linked PR (open / draft / merged / changes-requested / failing-CI) in the dashboard, next to the branch. Source: `gh pr view --json state,number,reviewDecision,statusCheckRollup` per agent branch, cached with a short TTL so the watched dashboard render stays cheap; degrade to "no PR" when `gh` is missing or the branch is unpushed. Concrete payoff: a `READY` workspace whose PR is `MERGED` is the one-keystroke follow-up to `agent-teardown`; a `READY` workspace with `CHANGES_REQUESTED` is the obvious candidate to spawn a fixup agent against. Pairs naturally with `agent-pr <slug>` — that command writes the link, this one reads it back.
 - **`agent-diff <slug>`.** Export diffs for every worktree to a known location for review.
 - **`agent-refresh <slug>`.** Carefully designed fetch + rebase/merge with confirmation. Risky enough that it gets its own phase.
 - **`.env` propagation.** Copy or template `.env` files from the canonical repo into the worktree if a per-repo rule says so.

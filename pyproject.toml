@@ -32,8 +32,8 @@ agent-status        = "agent_hangar.cli:status"
 agent-mark-as-blocked = "agent_hangar.cli:blocked"
 agent-list          = "agent_hangar.cli:list_workspaces"
 agent-jump          = "agent_hangar.cli:jump"
-agent-close         = "agent_hangar.cli:close"
-agent-clean         = "agent_hangar.cli:clean"
+agent-mark-done       = "agent_hangar.cli:mark_done"
+agent-teardown        = "agent_hangar.cli:teardown"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

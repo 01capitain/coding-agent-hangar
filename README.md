@@ -137,7 +137,7 @@ hangar-watch                      # one-shot dashboard render (cockpit uses watc
 When the task is done:
 
 ```bash
-agent-clean permissions-refactor      # guided interactive cleanup checklist
+agent-teardown permissions-refactor   # guided interactive teardown (irreversible)
 ```
 
 ## Commands
@@ -163,8 +163,8 @@ Commands split by domain. `agent-*` commands deal with agents themselves — one
 | `agent-mark-as-blocked <slug> <message>`| Set state to `BLOCKED`, send tmux display-message, ring the bell.                                                                        |
 | `agent-list`                            | Plain ASCII table of every agent and its state. The simple, scriptable view used outside the cockpit.                                    |
 | `agent-jump <slug\|blocked\|feedback>`  | Switch tmux to an agent's workspace; with `blocked`/`feedback` picks the next match.                                                     |
-| `agent-close <slug>`                    | Mark workspace `DONE` or `PAUSED`; optionally kill its tmux window. Does **not** remove worktrees.                                       |
-| `agent-clean <slug>`                    | Guided interactive cleanup of one agent's workspace. Refuses uncommitted work without `--force`.                                         |
+| `agent-mark-done <slug> <summary>`      | Set state to `DONE`, ring the bell, send tmux display-message. Mirror of `agent-mark-as-blocked`. Does **not** touch worktrees.          |
+| `agent-teardown <slug>`                 | Guided interactive teardown of one agent's workspace (worktrees, branches, archive). Irreversible. Refuses uncommitted work without `--force`. |
 
 ## Status states
 
