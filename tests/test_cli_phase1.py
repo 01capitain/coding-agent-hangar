@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from agent_hangar import cli, config
+from agent_hangar import status as status_mod
 
 
 def _run(monkeypatch: pytest.MonkeyPatch, func, argv: list[str]) -> int:
@@ -25,11 +26,6 @@ def _run(monkeypatch: pytest.MonkeyPatch, func, argv: list[str]) -> int:
 def test_hangar_init_creates_dirs_and_repos_yaml(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # Force the deterministic "no sync-repos" branch.
-    from agent_hangar import init as init_mod
-
-    monkeypatch.setattr(init_mod, "_sync_repos_paths", lambda: [])
-
     rc = _run(monkeypatch, cli.init, ["hangar-init"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -38,12 +34,9 @@ def test_hangar_init_creates_dirs_and_repos_yaml(
     assert config.repos_yaml_path().exists()
 
 
-def test_agent_status_writes_and_lists(
+def test_agent_status_writes_and_hangar_list_reads(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agent_hangar import init as init_mod
-
-    monkeypatch.setattr(init_mod, "_sync_repos_paths", lambda: [])
     _run(monkeypatch, cli.init, ["hangar-init"])
     capsys.readouterr()  # flush init output
 
@@ -54,7 +47,7 @@ def test_agent_status_writes_and_lists(
     )
     assert rc == 0
 
-    rc = _run(monkeypatch, cli.list_workspaces, ["agent-list"])
+    rc = _run(monkeypatch, cli.list_workspaces, ["hangar-list"])
     assert rc == 0
 
     out = capsys.readouterr().out
@@ -63,10 +56,10 @@ def test_agent_status_writes_and_lists(
     assert "looking at guards" in out
 
 
-def test_agent_list_without_init_errors_clearly(
+def test_hangar_list_without_init_errors_clearly(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rc = _run(monkeypatch, cli.list_workspaces, ["agent-list"])
+    rc = _run(monkeypatch, cli.list_workspaces, ["hangar-list"])
     assert rc != 0
     err = capsys.readouterr().err
     assert "hangar-init" in err
@@ -75,25 +68,17 @@ def test_agent_list_without_init_errors_clearly(
 def test_agent_status_rejects_unknown_state(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agent_hangar import init as init_mod
-
-    monkeypatch.setattr(init_mod, "_sync_repos_paths", lambda: [])
     _run(monkeypatch, cli.init, ["hangar-init"])
     capsys.readouterr()
 
     # argparse rejects with exit code 2 before our code runs.
-    rc = _run(
-        monkeypatch, cli.status, ["agent-status", "foo", "ON_FIRE", "nope"]
-    )
+    rc = _run(monkeypatch, cli.status, ["agent-status", "foo", "ON_FIRE", "nope"])
     assert rc == 2
 
 
 def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agent_hangar import init as init_mod
-
-    monkeypatch.setattr(init_mod, "_sync_repos_paths", lambda: [])
     _run(monkeypatch, cli.init, ["hangar-init"])
     capsys.readouterr()
 
@@ -110,11 +95,7 @@ def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
     monkeypatch.setattr(cli.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
-    rc = _run(
-        monkeypatch,
-        cli.blocked,
-        ["agent-blocked", "alpha", "Need API token"],
-    )
+    rc = _run(monkeypatch, cli.blocked, ["agent-blocked", "alpha", "Need API token"])
     assert rc == 0
     captured = capsys.readouterr()
     assert "\a" in captured.err
@@ -127,9 +108,6 @@ def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
 def test_agent_blocked_does_not_fail_without_tmux(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agent_hangar import init as init_mod
-
-    monkeypatch.setattr(init_mod, "_sync_repos_paths", lambda: [])
     _run(monkeypatch, cli.init, ["hangar-init"])
     capsys.readouterr()
 
@@ -139,13 +117,9 @@ def test_agent_blocked_does_not_fail_without_tmux(
     assert rc == 0
 
 
-def test_agent_list_orders_by_state_priority(
+def test_hangar_list_orders_by_state_priority(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from agent_hangar import init as init_mod
-    from agent_hangar import status as status_mod
-
-    monkeypatch.setattr(init_mod, "_sync_repos_paths", lambda: [])
     _run(monkeypatch, cli.init, ["hangar-init"])
     capsys.readouterr()
 
@@ -153,7 +127,7 @@ def test_agent_list_orders_by_state_priority(
     status_mod.write_status("working-one", "WORKING", "still going")
     status_mod.write_status("blocked-one", "BLOCKED", "needs a decision")
 
-    rc = _run(monkeypatch, cli.list_workspaces, ["agent-list"])
+    rc = _run(monkeypatch, cli.list_workspaces, ["hangar-list"])
     assert rc == 0
     out = capsys.readouterr().out
     lines = [line for line in out.splitlines() if line.strip()]

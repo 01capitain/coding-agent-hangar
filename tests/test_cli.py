@@ -13,15 +13,15 @@ from agent_hangar import cli
 
 CLI_FUNCTIONS = [
     ("hangar-init", "init"),
+    ("hangar-dashboard", "dashboard"),
+    ("hangar-cockpit", "cockpit"),
+    ("hangar-list", "list_workspaces"),
+    ("hangar-tmux-status", "tmux_status"),
+    ("hangar-quota-update", "quota_update"),
     ("agent-spawn", "spawn"),
     ("agent-status", "status"),
     ("agent-blocked", "blocked"),
-    ("agent-dashboard", "dashboard"),
-    ("agent-tmux-status", "tmux_status"),
-    ("agent-quota-update", "quota_update"),
-    ("agent-cockpit", "cockpit"),
     ("agent-jump", "jump"),
-    ("agent-list", "list_workspaces"),
     ("agent-close", "close"),
     ("agent-clean", "clean"),
 ]

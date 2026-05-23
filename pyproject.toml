@@ -22,18 +22,18 @@ dev = [
 ]
 
 [project.scripts]
-hangar-init        = "agent_hangar.cli:init"
-agent-spawn        = "agent_hangar.cli:spawn"
-agent-status       = "agent_hangar.cli:status"
-agent-blocked      = "agent_hangar.cli:blocked"
-agent-dashboard    = "agent_hangar.cli:dashboard"
-agent-tmux-status  = "agent_hangar.cli:tmux_status"
-agent-quota-update = "agent_hangar.cli:quota_update"
-agent-cockpit      = "agent_hangar.cli:cockpit"
-agent-jump         = "agent_hangar.cli:jump"
-agent-list         = "agent_hangar.cli:list_workspaces"
-agent-close        = "agent_hangar.cli:close"
-agent-clean        = "agent_hangar.cli:clean"
+hangar-init         = "agent_hangar.cli:init"
+hangar-dashboard    = "agent_hangar.cli:dashboard"
+hangar-cockpit      = "agent_hangar.cli:cockpit"
+hangar-list         = "agent_hangar.cli:list_workspaces"
+hangar-tmux-status  = "agent_hangar.cli:tmux_status"
+hangar-quota-update = "agent_hangar.cli:quota_update"
+agent-spawn         = "agent_hangar.cli:spawn"
+agent-status        = "agent_hangar.cli:status"
+agent-blocked       = "agent_hangar.cli:blocked"
+agent-jump          = "agent_hangar.cli:jump"
+agent-close         = "agent_hangar.cli:close"
+agent-clean         = "agent_hangar.cli:clean"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

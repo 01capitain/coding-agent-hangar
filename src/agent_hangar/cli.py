@@ -53,17 +53,8 @@ def init() -> None:
     repos_path = report["repos_yaml"]
     if status == "preserved-existing":
         print(f"repos.yaml: kept existing file at {repos_path}")
-    elif status == "seeded-with-sync-repos":
-        n = report["sync_repos_count"]
-        print(
-            f"repos.yaml: seeded {repos_path} with bundled hotelkit sample "
-            f"+ {n} entr{'y' if n == 1 else 'ies'} from `sync-repos list`."
-        )
     else:
-        print(
-            f"repos.yaml: seeded {repos_path} with bundled hotelkit sample "
-            "(sync-repos not on PATH)."
-        )
+        print(f"repos.yaml: seeded {repos_path} with bundled hotelkit sample.")
     print("Done. Edit repos.yaml to match your real repositories before spawning.")
 
 
@@ -147,41 +138,41 @@ def _notify_tmux(slug: str, message: str) -> None:
 
 def dashboard() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-dashboard",
+        prog="hangar-dashboard",
         description="Render grouped statuses + quota pane. Use under `watch -n 2`.",
     )
     parser.parse_args()
-    _stub("agent-dashboard")
+    _stub("hangar-dashboard")
 
 
 def tmux_status() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-tmux-status",
+        prog="hangar-tmux-status",
         description="Emit the compact one-line status summary for tmux status-right.",
     )
     parser.parse_args()
-    _stub("agent-tmux-status")
+    _stub("hangar-tmux-status")
 
 
 def quota_update() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-quota-update",
+        prog="hangar-quota-update",
         description=(
             "Read Claude statusline JSON from stdin, normalize it, "
             "write ~/.agent-control/quotas/claude.json."
         ),
     )
     parser.parse_args()
-    _stub("agent-quota-update")
+    _stub("hangar-quota-update")
 
 
 def cockpit() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-cockpit",
+        prog="hangar-cockpit",
         description="Create or attach the `agents` tmux session and open the cockpit window.",
     )
     parser.parse_args()
-    _stub("agent-cockpit")
+    _stub("hangar-cockpit")
 
 
 def jump() -> None:
@@ -196,14 +187,14 @@ def jump() -> None:
 
 def list_workspaces() -> None:
     parser = argparse.ArgumentParser(
-        prog="agent-list",
+        prog="hangar-list",
         description="List all workspaces and their states.",
     )
     parser.parse_args()
 
     if not config.status_dir().is_dir():
         print(
-            "agent-list: control directory missing. Run `hangar-init` first.",
+            "hangar-list: control directory missing. Run `hangar-init` first.",
             file=sys.stderr,
         )
         sys.exit(_USER_ERROR_EXIT)

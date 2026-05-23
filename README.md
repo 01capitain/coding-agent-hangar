@@ -58,18 +58,13 @@ pipx install .            # preferred — isolates dependencies
 pip install --user -e .   # editable install for development
 ```
 
-The `pyproject.toml` registers the `agent-*` commands as console scripts; ensure `~/.local/bin/` is on your `PATH`.
+The `pyproject.toml` registers `hangar-*` (control-plane commands) and `agent-*` (per-agent commands) console scripts; ensure `~/.local/bin/` is on your `PATH`.
 
 ```bash
 hangar-init
 ```
 
-Creates `~/.agent-control/` and a `~/.agent-control/config/repos.yaml`. The repos.yaml is seeded with the bundled hotelkit-shaped sample. If your local repository registry is reachable, entries for each path are appended below the sample so you can curate from a starting list:
-
-- Set `HANGAR_SYNC_REPOS_LIST` to a path-per-line file (recommended when `sync-repos` is a shell alias — subprocess can't see aliases). Example for the zsh-alias setup: `export HANGAR_SYNC_REPOS_LIST="$HOME/Documents/ZSH Aliases/sync-repos/repository-list.txt"`.
-- Otherwise, if `sync-repos` resolves via `which`, the bundled detection calls `sync-repos list` and parses its stdout.
-
-Re-running `hangar-init` is idempotent (it won't clobber an existing `repos.yaml`).
+Creates `~/.agent-control/` and seeds `~/.agent-control/config/repos.yaml` from the bundled hotelkit-shaped sample. Edit the file to match your actual repositories — delete what doesn't apply and add what does. Re-running `hangar-init` is idempotent: it adds any missing subdirs and never clobbers an existing `repos.yaml`.
 
 ## Configuration
 
@@ -112,7 +107,6 @@ AGENT_TMUX_SESSION="agents"
 AGENT_BASE_BRANCH="origin/main"
 AGENT_COMMAND="claude"
 AGENT_STALE_MINUTES="30"
-HANGAR_SYNC_REPOS_LIST=""                      # path-per-line file consumed by hangar-init
 ```
 
 If you want workspaces under `/var/www/agent-work/` (for nginx wildcard vhosts), set `AGENT_WORK_HOME=/var/www/agent-work`.
@@ -120,7 +114,7 @@ If you want workspaces under `/var/www/agent-work/` (for nginx wildcard vhosts),
 ## Quick start
 
 ```bash
-agent-cockpit                                       # opens the agents tmux session and cockpit window
+hangar-cockpit                                      # opens the agents tmux session and cockpit window
 agent-spawn permissions-refactor backend frontend   # creates workspace, worktrees, tmux window
 # inside the new tmux window: start your agent, give it the task in .agent/prompt.md
 ```
@@ -137,7 +131,7 @@ From the cockpit (or anywhere):
 ```bash
 agent-jump permissions-refactor       # switch tmux to that workspace
 agent-jump blocked                    # jump to the next blocked agent
-agent-dashboard                       # one-shot dashboard render (cockpit uses watch on this)
+hangar-dashboard                      # one-shot dashboard render (cockpit uses watch on this)
 ```
 
 When the task is done:
@@ -148,20 +142,29 @@ agent-clean permissions-refactor      # guided interactive cleanup checklist
 
 ## Commands
 
+Commands split by scope. `hangar-*` commands operate on the whole control plane (all agents, the cockpit, the shared quota). `agent-*` commands target a single workspace by slug.
+
+**Hangar-level (global)**
+
+| Command                | Purpose                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `hangar-init`          | Create `~/.agent-control/` layout and seed `repos.yaml` from the bundled hotelkit sample.                              |
+| `hangar-cockpit`       | Create or attach the `agents` tmux session and open the cockpit window with the watched dashboard.                     |
+| `hangar-dashboard`     | One-shot render of the grouped status dashboard + quota pane. Run under `watch -n 2` in the cockpit window.            |
+| `hangar-list`          | Plain ASCII table of every workspace and its state. The simpler, scriptable view used outside the cockpit.             |
+| `hangar-tmux-status`   | Emit the compact `[B:n] [F:n] [R:n] [W:n] | 5h:U%/E% 7d:U%/E%` line consumed by `set -g status-right` in `~/.tmux.conf`. |
+| `hangar-quota-update`  | Read Claude statusline JSON from stdin, normalize, write `~/.agent-control/quotas/claude.json`.                        |
+
+**Per-agent (slug-bound)**
+
 | Command                                 | Purpose                                                                                                                                  |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `hangar-init`                           | Create `~/.agent-control/` layout and seed `repos.yaml` (hotelkit sample + `sync-repos list` entries when available).                    |
-| `agent-cockpit`                         | Create or attach the `agents` tmux session and open the cockpit window.                                                                  |
 | `agent-spawn [slug] [repo...]`          | Create a workspace. Interactive when args omitted; prompts resume/suffix/abort if slug exists. Pass zero repos for a planning workspace. |
 | `agent-status <slug> <state> <summary>` | Update the workspace's status file. Atomic write.                                                                                        |
 | `agent-blocked <slug> <message>`        | Set state to `BLOCKED`, send tmux display-message, ring the bell.                                                                        |
-| `agent-dashboard`                       | Render grouped statuses + quota pane. Use under `watch -n 2` in the cockpit.                                                             |
-| `agent-tmux-status`                     | Print the compact one-line status summary for use in tmux `status-right`.                                                                |
 | `agent-jump <slug\|blocked\|feedback>`  | Switch tmux to a workspace; with `blocked`/`feedback` picks the next match.                                                              |
-| `agent-list`                            | List all workspaces and their states.                                                                                                    |
 | `agent-close <slug>`                    | Mark workspace `DONE` or `PAUSED`; optionally kill its tmux window. Does **not** remove worktrees.                                       |
 | `agent-clean <slug>`                    | Guided interactive cleanup. Refuses uncommitted work without `--force`.                                                                  |
-| `agent-quota-update`                    | Read Claude statusline JSON from stdin, normalize, write `~/.agent-control/quotas/claude.json`.                                          |
 
 ## Status states
 
@@ -185,7 +188,7 @@ Agent Hangar shines when the compact status summary is visible from every tmux w
 
 ```tmux
 set -g status-interval 15
-set -g status-right '#(agent-tmux-status) #{status-right}'
+set -g status-right '#(hangar-tmux-status) #{status-right}'
 ```
 
 The output looks roughly like:
@@ -198,7 +201,7 @@ The output looks roughly like:
 
 ## Claude Code statusline integration (for quota)
 
-Claude Code's statusline emits a JSON payload that contains `rate_limits.five_hour.used_percentage`, `rate_limits.five_hour.resets_at`, `rate_limits.seven_day.*`, and `context_window.used_percentage`. Pipe it into `agent-quota-update`:
+Claude Code's statusline emits a JSON payload that contains `rate_limits.five_hour.used_percentage`, `rate_limits.five_hour.resets_at`, `rate_limits.seven_day.*`, and `context_window.used_percentage`. Pipe it into `hangar-quota-update`:
 
 `~/.local/bin/claude-statusline-hangar` (or fold this into your existing statusline script):
 
@@ -207,7 +210,7 @@ Claude Code's statusline emits a JSON payload that contains `rate_limits.five_ho
 set -euo pipefail
 
 payload="$(cat)"
-printf '%s' "$payload" | agent-quota-update >/dev/null 2>&1 || true
+printf '%s' "$payload" | hangar-quota-update >/dev/null 2>&1 || true
 
 # Keep emitting your normal statusline output.
 printf '%s' "$payload" | your-existing-statusline-renderer
@@ -250,7 +253,7 @@ coding-agent-dashboard/
 │   ├── clean.py
 │   └── templates/         # AGENTS.md, HANDOFF.md, prompt.md templates
 ├── scripts/
-│   └── claude-statusline  # bash wrapper that pipes JSON to agent-quota-update
+│   └── claude-statusline  # bash wrapper that pipes JSON to hangar-quota-update
 ├── tests/
 └── documentation/
     ├── initial-prd.md

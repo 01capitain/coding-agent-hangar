@@ -60,7 +60,7 @@ The user's existing `~/.claude/statusline-command.sh` already reads them. The PR
 - Field is `resets_at` (not `reset_at`).
 - Value is a **Unix timestamp**, not an ISO 8601 string. Normalize to ISO on write.
 
-**Source.** `~/.claude/statusline-command.sh` is wired as the Claude Code statusline. `agent-quota-update` will be invoked from a wrapper that the user adds to that script (or replaces it with). The wrapper pipes the JSON to `agent-quota-update` and continues to render the user's existing statusline output.
+**Source.** `~/.claude/statusline-command.sh` is wired as the Claude Code statusline. `hangar-quota-update` will be invoked from a wrapper that the user adds to that script (or replaces it with). The wrapper pipes the JSON to `hangar-quota-update` and continues to render the user's existing statusline output.
 
 ---
 
@@ -142,7 +142,7 @@ repos:
 
 **Decision.** Two surfaces, both first-class in v1:
 
-1. **Cockpit tmux window** — the full dashboard (PRD-as-written): grouped statuses, quota pane, recent log lines. Reached via `agent-cockpit` (creates/attaches the `agents` session and the `cockpit` window).
+1. **Cockpit tmux window** — the full dashboard (PRD-as-written): grouped statuses, quota pane, recent log lines. Reached via `hangar-cockpit` (creates/attaches the `agents` session and the `cockpit` window).
 2. **Tmux status line snippet** — a compact summary visible from EVERY tmux window. Format roughly:
 
    ```text
@@ -158,11 +158,11 @@ repos:
 **Why.** The user explicitly said "I am actively working but don't recognize the need to switch tabs." A cockpit-window-only design fails that test — you have to *choose* to look. A status-line summary catches peripheral vision in every window without requiring a context switch. The cockpit window stays as the rich detail view when something interesting happens.
 
 **Consequence.**
-- A new command, `agent-tmux-status`, prints the formatted status line; users paste a snippet into their `~/.tmux.conf`:
+- A new command, `hangar-tmux-status`, prints the formatted status line; users paste a snippet into their `~/.tmux.conf`:
 
   ```tmux
   set -g status-interval 15
-  set -g status-right '#(agent-tmux-status) '
+  set -g status-right '#(hangar-tmux-status) '
   ```
 
   This composes with existing status-right content rather than replacing it. The README documents the snippet.
@@ -247,7 +247,7 @@ No separate "risk: high risk" text label — the color carries it. The two-bar c
 
 ## 12. Project name — Agent Hangar
 
-**Decision.** Product name throughout README/ROADMAP: **Agent Hangar**. Repo name stays `coding-agent-dashboard` for now. Command prefix stays `agent-*`. Filesystem root stays `~/.agent-control/`.
+**Decision.** Product name throughout README/ROADMAP: **Agent Hangar**. Repo name stays `coding-agent-dashboard` for now. Commands split between `agent-*` (per-agent) and `hangar-*` (hangar-level) prefixes — see the amendment below. Filesystem root stays `~/.agent-control/`.
 
 **Why.** "Cockpit" was the PRD's working name; "Hangar" reads better as a place where multiple craft (agents) live, prepare, and launch. The light inconsistency between product name and repo name lives only in the README intro; everything else uses straightforward language (workspace, spawn, dashboard, jump).
 
@@ -258,10 +258,12 @@ No separate "risk: high risk" text label — the color carries it. The two-bar c
 
 **Amendment (CLI prefix split).** The command prefix is **not** a single `agent-*` family. It splits by scope:
 
-- **`agent-*`** — operates on a single agent / workspace (`agent-spawn`, `agent-status`, `agent-blocked`, `agent-jump`, `agent-close`, `agent-clean`). The slug is the discriminator.
-- **`hangar-*`** — operates on the hangar itself, not on any one agent (`hangar-init` for now; future meta commands like `hangar-dashboard`, `hangar-cockpit`, `hangar-list`, `hangar-tmux-status`, `hangar-quota-update` are candidates if the same misreading happens).
+- **`agent-*`** — operates on a single agent / workspace. The slug is the discriminator. Members: `agent-spawn`, `agent-status`, `agent-blocked`, `agent-jump`, `agent-close`, `agent-clean`.
+- **`hangar-*`** — operates on the hangar itself, not on any one agent. Members: `hangar-init`, `hangar-dashboard`, `hangar-cockpit`, `hangar-list`, `hangar-tmux-status`, `hangar-quota-update`.
 
-The trigger was `agent-init`: it reads as "initialize an agent" but actually initializes the control directory at `~/.agent-control/`. `hangar-init` removes the ambiguity. Other meta commands (`agent-dashboard`, `agent-cockpit`, `agent-list`, `agent-tmux-status`, `agent-quota-update`) currently keep their `agent-*` prefix because they don't have the same per-agent / hangar-wide read; rename them later only if the same confusion surfaces.
+The trigger was `agent-init`: it reads as "initialize an agent" but actually initializes the control directory at `~/.agent-control/`. Once the principle was identified, the same audit applied to every meta command — anything operating on the whole control plane (the dashboard, the cockpit window, the aggregate list, the tmux status emitter, the shared quota writer) got the `hangar-` prefix. The split should make a command's scope obvious at first sight.
+
+**Open ambiguity within `hangar-*`.** Several of the global commands have overlapping-sounding names (`hangar-dashboard` vs `hangar-cockpit` vs `hangar-list`) — these are *not* synonyms and the difference must be tightened by docstrings + the README's command table. Rough rule today: `hangar-cockpit` = the tmux window; `hangar-dashboard` = the rich content rendered inside that window (also runnable one-shot); `hangar-list` = the plain ASCII table for scripting / debug. Revisit names if real users keep picking wrong.
 
 ---
 
@@ -293,7 +295,7 @@ The trigger was `agent-init`: it reads as "initialize an agent" but actually ini
   │       ├── templates/        # AGENTS.md, HANDOFF.md, prompt.md templates
   │       └── clean.py
   ├── scripts/
-  │   └── claude-statusline     # bash wrapper that pipes JSON to agent-quota-update
+  │   └── claude-statusline     # bash wrapper that pipes JSON to hangar-quota-update
   ├── tests/
   └── documentation/
       ├── initial-prd.md
@@ -303,18 +305,18 @@ The trigger was `agent-init`: it reads as "initialize an agent" but actually ini
 - `pyproject.toml` declares console scripts:
   ```toml
   [project.scripts]
-  hangar-init       = "agent_hangar.cli:init"
-  agent-spawn       = "agent_hangar.cli:spawn"
-  agent-status      = "agent_hangar.cli:status"
-  agent-blocked     = "agent_hangar.cli:blocked"
-  agent-dashboard   = "agent_hangar.cli:dashboard"
-  agent-tmux-status = "agent_hangar.cli:tmux_status"
-  agent-quota-update= "agent_hangar.cli:quota_update"
-  agent-cockpit     = "agent_hangar.cli:cockpit"
-  agent-jump        = "agent_hangar.cli:jump"
-  agent-list        = "agent_hangar.cli:list_workspaces"
-  agent-close       = "agent_hangar.cli:close"
-  agent-clean       = "agent_hangar.cli:clean"
+  hangar-init         = "agent_hangar.cli:init"
+  hangar-dashboard    = "agent_hangar.cli:dashboard"
+  hangar-cockpit      = "agent_hangar.cli:cockpit"
+  hangar-list         = "agent_hangar.cli:list_workspaces"
+  hangar-tmux-status  = "agent_hangar.cli:tmux_status"
+  hangar-quota-update = "agent_hangar.cli:quota_update"
+  agent-spawn         = "agent_hangar.cli:spawn"
+  agent-status        = "agent_hangar.cli:status"
+  agent-blocked       = "agent_hangar.cli:blocked"
+  agent-jump          = "agent_hangar.cli:jump"
+  agent-close         = "agent_hangar.cli:close"
+  agent-clean         = "agent_hangar.cli:clean"
   ```
 - Install via `pipx install .` (preferred — isolated) or `pip install --user -e .` (editable for development).
 - Dependencies: `PyYAML`. Maybe `rich` for the dashboard renderer; evaluate once we have a v1 to look at — pure ANSI may be sufficient.
@@ -332,11 +334,11 @@ The v1 MVP ships when the following all work end-to-end:
 3. `agent-spawn` interactive mode shows the curated repo list with nothing pre-selected, sorted by `default: true` hint.
 4. `agent-spawn` with an existing slug prompts resume / suffix / abort.
 5. `agent-status` and `agent-blocked` update the slug's status file atomically.
-6. `agent-dashboard` renders grouped statuses + quota pane in the cockpit window. Stale `WORKING` rows are flagged.
-7. `agent-tmux-status` emits the compact one-line summary for the tmux status bar.
-8. `agent-cockpit` creates / attaches the `agents` session and `cockpit` window with the dashboard running in `watch`.
+6. `hangar-dashboard` renders grouped statuses + quota pane in the cockpit window. Stale `WORKING` rows are flagged.
+7. `hangar-tmux-status` emits the compact one-line summary for the tmux status bar.
+8. `hangar-cockpit` creates / attaches the `agents` session and `cockpit` window with the dashboard running in `watch`.
 9. `agent-jump <slug|blocked|feedback>` switches tmux. Multi-match: interactive list.
-10. `agent-quota-update` reads Claude statusline JSON from stdin and writes normalized `~/.agent-control/quotas/claude.json`. Graceful on missing fields.
+10. `hangar-quota-update` reads Claude statusline JSON from stdin and writes normalized `~/.agent-control/quotas/claude.json`. Graceful on missing fields.
 11. The cockpit dashboard still renders when quota data is missing.
 12. `agent-clean <slug>` walks the user through guided cleanup, refusing to remove uncommitted work without `--force`.
 
@@ -366,4 +368,4 @@ These are real questions deferred until v1 produces evidence:
 - Whether to keep raw Claude statusline payloads for debugging in `~/.agent-control/quotas/raw/`.
 - Whether `agent-spawn` should emit a task-description prompt the user fills in during interactive flow, or stay PRD-as-written (just open the workspace).
 - **Port discovery → agent feedback loop.** Listening ports per worktree (cmux surfaces these passively in its sidebar) could be a dashboard-only column, but the higher-value shape is feeding the discovered port into the agent's context so it can validate its own work — run integration tests, smoke endpoints, hit the dev server it just modified. Postponed until we have direct experience of how agents coordinate frontend ↔ backend; revisit when an agent first has to ask "what port is the backend on?" Open sub-questions: where the agent reads the port from (file in `.agent/`, env var, prompt injection at spawn time, on-demand CLI), and when discovery runs (one-shot post-bootstrap vs. live polling).
-- **Agent session resume contract.** `claude --resume <session_id>` (and per-backend equivalents) is the right escape hatch for the case tmux does NOT cover: the agent process is gone (crash, reboot, `Ctrl-D`) but the conversation lives in the backend's session store. The session ID is **agent-scoped, not repository-scoped** — it has nothing to do with `repos.yaml`. Natural home is per-slug, probably `.agent/metadata.env` (or a sibling `.agent/sessions.json` if multiple concurrent agents per workspace ever becomes a thing). Population would come from a backend hook; for Claude Code the session ID is already exposed via the statusline JSON, so the `agent-quota-update` wrapper is one plausible entry point. Skip until the first lost conversation actually stings.
+- **Agent session resume contract.** `claude --resume <session_id>` (and per-backend equivalents) is the right escape hatch for the case tmux does NOT cover: the agent process is gone (crash, reboot, `Ctrl-D`) but the conversation lives in the backend's session store. The session ID is **agent-scoped, not repository-scoped** — it has nothing to do with `repos.yaml`. Natural home is per-slug, probably `.agent/metadata.env` (or a sibling `.agent/sessions.json` if multiple concurrent agents per workspace ever becomes a thing). Population would come from a backend hook; for Claude Code the session ID is already exposed via the statusline JSON, so the `hangar-quota-update` wrapper is one plausible entry point. Skip until the first lost conversation actually stings.
