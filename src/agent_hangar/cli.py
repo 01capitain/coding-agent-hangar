@@ -29,7 +29,7 @@ def _stub(name: str) -> None:
 
 def init() -> None:
     parser = argparse.ArgumentParser(
-        prog="hangar-init",
+        prog="hangar-setup",
         description="Create ~/.agent-control/ layout and seed repos.yaml.",
     )
     parser.parse_args()
@@ -37,7 +37,7 @@ def init() -> None:
     try:
         report = init_mod.run_init()
     except init_mod.InitError as exc:
-        print(f"hangar-init: {exc}", file=sys.stderr)
+        print(f"hangar-setup: {exc}", file=sys.stderr)
         sys.exit(_USER_ERROR_EXIT)
 
     print(f"Hangar root: {report['control_home']}")
@@ -138,20 +138,25 @@ def _notify_tmux(slug: str, message: str) -> None:
 
 def dashboard() -> None:
     parser = argparse.ArgumentParser(
-        prog="hangar-dashboard",
-        description="Render grouped statuses + quota pane. Use under `watch -n 2`.",
+        prog="hangar-watch",
+        description=(
+            "Render grouped statuses + quota pane. The rich rendering that "
+            "`hangar-checkin` runs under `watch -n 2`."
+        ),
     )
     parser.parse_args()
-    _stub("hangar-dashboard")
+    _stub("hangar-watch")
 
 
 def tmux_status() -> None:
     parser = argparse.ArgumentParser(
-        prog="hangar-tmux-status",
-        description="Emit the compact one-line status summary for tmux status-right.",
+        prog="hangar-statusline",
+        description=(
+            "Emit the compact one-line summary for use in tmux's `status-right`."
+        ),
     )
     parser.parse_args()
-    _stub("hangar-tmux-status")
+    _stub("hangar-statusline")
 
 
 def quota_update() -> None:
@@ -168,11 +173,14 @@ def quota_update() -> None:
 
 def cockpit() -> None:
     parser = argparse.ArgumentParser(
-        prog="hangar-cockpit",
-        description="Create or attach the `agents` tmux session and open the cockpit window.",
+        prog="hangar-checkin",
+        description=(
+            "Open the cockpit tmux window: create or attach the `agents` session, "
+            "create or reuse the `cockpit` window with the watched dashboard."
+        ),
     )
     parser.parse_args()
-    _stub("hangar-cockpit")
+    _stub("hangar-checkin")
 
 
 def jump() -> None:
@@ -187,14 +195,14 @@ def jump() -> None:
 
 def list_workspaces() -> None:
     parser = argparse.ArgumentParser(
-        prog="hangar-list",
+        prog="agent-list",
         description="List all workspaces and their states.",
     )
     parser.parse_args()
 
     if not config.status_dir().is_dir():
         print(
-            "hangar-list: control directory missing. Run `hangar-init` first.",
+            "agent-list: control directory missing. Run `hangar-setup` first.",
             file=sys.stderr,
         )
         sys.exit(_USER_ERROR_EXIT)

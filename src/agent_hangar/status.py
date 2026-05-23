@@ -127,7 +127,7 @@ def write_status(slug: str, state: str, summary: str) -> StatusRecord:
     if not status_dir.is_dir():
         raise StatusError(
             f"control directory missing at {config.control_home()}. "
-            "Run `hangar-init` first."
+            "Run `hangar-setup` first."
         )
 
     now = _now_utc()

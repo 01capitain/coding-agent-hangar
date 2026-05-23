@@ -22,15 +22,15 @@ dev = [
 ]
 
 [project.scripts]
-hangar-init         = "agent_hangar.cli:init"
-hangar-dashboard    = "agent_hangar.cli:dashboard"
-hangar-cockpit      = "agent_hangar.cli:cockpit"
-hangar-list         = "agent_hangar.cli:list_workspaces"
-hangar-tmux-status  = "agent_hangar.cli:tmux_status"
+hangar-setup        = "agent_hangar.cli:init"
+hangar-checkin      = "agent_hangar.cli:cockpit"
+hangar-watch        = "agent_hangar.cli:dashboard"
+hangar-statusline   = "agent_hangar.cli:tmux_status"
 hangar-quota-update = "agent_hangar.cli:quota_update"
 agent-spawn         = "agent_hangar.cli:spawn"
 agent-status        = "agent_hangar.cli:status"
 agent-blocked       = "agent_hangar.cli:blocked"
+agent-list          = "agent_hangar.cli:list_workspaces"
 agent-jump          = "agent_hangar.cli:jump"
 agent-close         = "agent_hangar.cli:close"
 agent-clean         = "agent_hangar.cli:clean"

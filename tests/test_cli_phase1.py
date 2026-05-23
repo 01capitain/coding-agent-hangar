@@ -23,10 +23,10 @@ def _run(monkeypatch: pytest.MonkeyPatch, func, argv: list[str]) -> int:
     return 0
 
 
-def test_hangar_init_creates_dirs_and_repos_yaml(
+def test_hangar_setup_creates_dirs_and_repos_yaml(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rc = _run(monkeypatch, cli.init, ["hangar-init"])
+    rc = _run(monkeypatch, cli.init, ["hangar-setup"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "Hangar root" in out
@@ -34,10 +34,10 @@ def test_hangar_init_creates_dirs_and_repos_yaml(
     assert config.repos_yaml_path().exists()
 
 
-def test_agent_status_writes_and_hangar_list_reads(
+def test_agent_status_writes_and_agent_list_reads(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _run(monkeypatch, cli.init, ["hangar-init"])
+    _run(monkeypatch, cli.init, ["hangar-setup"])
     capsys.readouterr()  # flush init output
 
     rc = _run(
@@ -47,7 +47,7 @@ def test_agent_status_writes_and_hangar_list_reads(
     )
     assert rc == 0
 
-    rc = _run(monkeypatch, cli.list_workspaces, ["hangar-list"])
+    rc = _run(monkeypatch, cli.list_workspaces, ["agent-list"])
     assert rc == 0
 
     out = capsys.readouterr().out
@@ -56,19 +56,19 @@ def test_agent_status_writes_and_hangar_list_reads(
     assert "looking at guards" in out
 
 
-def test_hangar_list_without_init_errors_clearly(
+def test_agent_list_without_setup_errors_clearly(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rc = _run(monkeypatch, cli.list_workspaces, ["hangar-list"])
+    rc = _run(monkeypatch, cli.list_workspaces, ["agent-list"])
     assert rc != 0
     err = capsys.readouterr().err
-    assert "hangar-init" in err
+    assert "hangar-setup" in err
 
 
 def test_agent_status_rejects_unknown_state(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _run(monkeypatch, cli.init, ["hangar-init"])
+    _run(monkeypatch, cli.init, ["hangar-setup"])
     capsys.readouterr()
 
     # argparse rejects with exit code 2 before our code runs.
@@ -79,7 +79,7 @@ def test_agent_status_rejects_unknown_state(
 def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _run(monkeypatch, cli.init, ["hangar-init"])
+    _run(monkeypatch, cli.init, ["hangar-setup"])
     capsys.readouterr()
 
     tmux_calls: list[list[str]] = []
@@ -108,7 +108,7 @@ def test_agent_blocked_writes_status_rings_bell_and_calls_tmux(
 def test_agent_blocked_does_not_fail_without_tmux(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _run(monkeypatch, cli.init, ["hangar-init"])
+    _run(monkeypatch, cli.init, ["hangar-setup"])
     capsys.readouterr()
 
     monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
@@ -117,17 +117,17 @@ def test_agent_blocked_does_not_fail_without_tmux(
     assert rc == 0
 
 
-def test_hangar_list_orders_by_state_priority(
+def test_agent_list_orders_by_state_priority(
     hangar_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _run(monkeypatch, cli.init, ["hangar-init"])
+    _run(monkeypatch, cli.init, ["hangar-setup"])
     capsys.readouterr()
 
     status_mod.write_status("done-one", "DONE", "finished a while ago")
     status_mod.write_status("working-one", "WORKING", "still going")
     status_mod.write_status("blocked-one", "BLOCKED", "needs a decision")
 
-    rc = _run(monkeypatch, cli.list_workspaces, ["hangar-list"])
+    rc = _run(monkeypatch, cli.list_workspaces, ["agent-list"])
     assert rc == 0
     out = capsys.readouterr().out
     lines = [line for line in out.splitlines() if line.strip()]

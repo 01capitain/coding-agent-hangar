@@ -61,10 +61,10 @@ pip install --user -e .   # editable install for development
 The `pyproject.toml` registers `hangar-*` (control-plane commands) and `agent-*` (per-agent commands) console scripts; ensure `~/.local/bin/` is on your `PATH`.
 
 ```bash
-hangar-init
+hangar-setup
 ```
 
-Creates `~/.agent-control/` and seeds `~/.agent-control/config/repos.yaml` from the bundled hotelkit-shaped sample. Edit the file to match your actual repositories — delete what doesn't apply and add what does. Re-running `hangar-init` is idempotent: it adds any missing subdirs and never clobbers an existing `repos.yaml`.
+Creates `~/.agent-control/` and seeds `~/.agent-control/config/repos.yaml` from the bundled hotelkit-shaped sample. Edit the file to match your actual repositories — delete what doesn't apply and add what does. Re-running `hangar-setup` is idempotent: it adds any missing subdirs and never clobbers an existing `repos.yaml`.
 
 ## Configuration
 
@@ -114,7 +114,7 @@ If you want workspaces under `/var/www/agent-work/` (for nginx wildcard vhosts),
 ## Quick start
 
 ```bash
-hangar-cockpit                                      # opens the agents tmux session and cockpit window
+hangar-checkin                                      # opens the agents tmux session and cockpit window
 agent-spawn permissions-refactor backend frontend   # creates workspace, worktrees, tmux window
 # inside the new tmux window: start your agent, give it the task in .agent/prompt.md
 ```
@@ -131,7 +131,7 @@ From the cockpit (or anywhere):
 ```bash
 agent-jump permissions-refactor       # switch tmux to that workspace
 agent-jump blocked                    # jump to the next blocked agent
-hangar-dashboard                      # one-shot dashboard render (cockpit uses watch on this)
+hangar-watch                      # one-shot dashboard render (cockpit uses watch on this)
 ```
 
 When the task is done:
@@ -142,29 +142,29 @@ agent-clean permissions-refactor      # guided interactive cleanup checklist
 
 ## Commands
 
-Commands split by scope. `hangar-*` commands operate on the whole control plane (all agents, the cockpit, the shared quota). `agent-*` commands target a single workspace by slug.
+Commands split by domain. `agent-*` commands deal with agents themselves — one or many. `hangar-*` commands deal with hangar infrastructure: setup, monitoring stations, plumbing.
 
-**Hangar-level (global)**
+**Hangar infrastructure**
 
-| Command                | Purpose                                                                                                                |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `hangar-init`          | Create `~/.agent-control/` layout and seed `repos.yaml` from the bundled hotelkit sample.                              |
-| `hangar-cockpit`       | Create or attach the `agents` tmux session and open the cockpit window with the watched dashboard.                     |
-| `hangar-dashboard`     | One-shot render of the grouped status dashboard + quota pane. Run under `watch -n 2` in the cockpit window.            |
-| `hangar-list`          | Plain ASCII table of every workspace and its state. The simpler, scriptable view used outside the cockpit.             |
-| `hangar-tmux-status`   | Emit the compact `[B:n] [F:n] [R:n] [W:n] | 5h:U%/E% 7d:U%/E%` line consumed by `set -g status-right` in `~/.tmux.conf`. |
-| `hangar-quota-update`  | Read Claude statusline JSON from stdin, normalize, write `~/.agent-control/quotas/claude.json`.                        |
+| Command               | Purpose                                                                                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hangar-setup`        | One-time bootstrap. Create `~/.agent-control/` layout and seed `repos.yaml` from the bundled hotelkit sample.                                      |
+| `hangar-checkin`      | Open the cockpit window. Create or attach the `agents` tmux session, create or reuse the `cockpit` window with the watched dashboard inside.        |
+| `hangar-watch`        | The rich dashboard render — grouped statuses, quota pane, colors. What `hangar-checkin`'s `watch -n 2` loop calls. Also runnable one-shot.         |
+| `hangar-statusline`   | Emit the compact `[B:n] [F:n] [R:n] [W:n] \| 5h:U%/E% 7d:U%/E%` line consumed by `set -g status-right` in `~/.tmux.conf`. Wired once; not typed.   |
+| `hangar-quota-update` | Plumbing: read Claude statusline JSON from stdin, normalize, write `~/.agent-control/quotas/claude.json`. Wired into the Claude statusline; not typed. |
 
-**Per-agent (slug-bound)**
+**Agents**
 
 | Command                                 | Purpose                                                                                                                                  |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `agent-spawn [slug] [repo...]`          | Create a workspace. Interactive when args omitted; prompts resume/suffix/abort if slug exists. Pass zero repos for a planning workspace. |
-| `agent-status <slug> <state> <summary>` | Update the workspace's status file. Atomic write.                                                                                        |
+| `agent-status <slug> <state> <summary>` | Update one workspace's status file. Atomic write.                                                                                        |
 | `agent-blocked <slug> <message>`        | Set state to `BLOCKED`, send tmux display-message, ring the bell.                                                                        |
-| `agent-jump <slug\|blocked\|feedback>`  | Switch tmux to a workspace; with `blocked`/`feedback` picks the next match.                                                              |
+| `agent-list`                            | Plain ASCII table of every agent and its state. The simple, scriptable view used outside the cockpit.                                    |
+| `agent-jump <slug\|blocked\|feedback>`  | Switch tmux to an agent's workspace; with `blocked`/`feedback` picks the next match.                                                     |
 | `agent-close <slug>`                    | Mark workspace `DONE` or `PAUSED`; optionally kill its tmux window. Does **not** remove worktrees.                                       |
-| `agent-clean <slug>`                    | Guided interactive cleanup. Refuses uncommitted work without `--force`.                                                                  |
+| `agent-clean <slug>`                    | Guided interactive cleanup of one agent's workspace. Refuses uncommitted work without `--force`.                                         |
 
 ## Status states
 
@@ -188,7 +188,7 @@ Agent Hangar shines when the compact status summary is visible from every tmux w
 
 ```tmux
 set -g status-interval 15
-set -g status-right '#(hangar-tmux-status) #{status-right}'
+set -g status-right '#(hangar-statusline) #{status-right}'
 ```
 
 The output looks roughly like:

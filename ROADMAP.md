@@ -28,12 +28,12 @@ Lay down the project so contributors (human or agent) can start building.
 
 The dashboard is worthless until something writes to it. Start here.
 
-- [x] `hangar-init` — create `~/.agent-control/{config,status,status/archive,logs,quotas,templates}` and seed `repos.yaml` from the bundled hotelkit-shaped sample. Idempotent: refuses to clobber an existing `repos.yaml`. Validate PyYAML is importable; print an install hint if not.
+- [x] `hangar-setup` — create `~/.agent-control/{config,status,status/archive,logs,quotas,templates}` and seed `repos.yaml` from the bundled hotelkit-shaped sample. Idempotent: refuses to clobber an existing `repos.yaml`. Validate PyYAML is importable; print an install hint if not.
 - [x] `agent-status <slug> <state> <summary>` — atomic write of `~/.agent-control/status/<slug>.status` in the PRD's `KEY="value"` format. Append to `~/.agent-control/logs/<slug>.log`.
 - [x] `agent-blocked <slug> <message>` — wrapper that calls `agent-status … BLOCKED …`, runs `tmux display-message` if tmux is reachable, prints `\a`.
-- [x] `hangar-list` — table of all workspaces from status files. Useful for debugging before the dashboard exists.
+- [x] `agent-list` — table of all workspaces from status files. Useful for debugging before the dashboard exists.
 
-**Exit criterion:** You can write a status file by hand or via `agent-status`, and `hangar-list` shows it. ✓
+**Exit criterion:** You can write a status file by hand or via `agent-status`, and `agent-list` shows it. ✓
 
 ---
 
@@ -41,12 +41,12 @@ The dashboard is worthless until something writes to it. Start here.
 
 Make the status visible.
 
-- [ ] `hangar-dashboard` — render grouped statuses in priority order: BLOCKED → NEEDS_FEEDBACK → FAILED → STARTING_FAILED → READY → WORKING → STARTING → PAUSED → DONE. Compute "minutes since `UPDATED_AT`"; flag `WORKING` rows older than `AGENT_STALE_MINUTES` (default 30) as `[stale]`. Handle missing/partial status files gracefully.
-- [ ] `hangar-cockpit` — create / attach the `agents` tmux session; create / reuse the `cockpit` window with a layout that runs `watch -n 2 hangar-dashboard` in the main pane and a shell in a side pane.
-- [ ] `hangar-tmux-status` — print the compact one-liner `[B:n] [F:n] [R:n] [W:n] | 5h:U%/E% 7d:U%/E%` with ANSI color codes. Document the `set -g status-right` snippet in README.
+- [ ] `hangar-watch` — render grouped statuses in priority order: BLOCKED → NEEDS_FEEDBACK → FAILED → STARTING_FAILED → READY → WORKING → STARTING → PAUSED → DONE. Compute "minutes since `UPDATED_AT`"; flag `WORKING` rows older than `AGENT_STALE_MINUTES` (default 30) as `[stale]`. Handle missing/partial status files gracefully.
+- [ ] `hangar-checkin` — create / attach the `agents` tmux session; create / reuse the `cockpit` window with a layout that runs `watch -n 2 hangar-watch` in the main pane and a shell in a side pane.
+- [ ] `hangar-statusline` — print the compact one-liner `[B:n] [F:n] [R:n] [W:n] | 5h:U%/E% 7d:U%/E%` with ANSI color codes. Document the `set -g status-right` snippet in README.
 - [ ] Bell-on-transition: `agent-blocked` (and any state transition into BLOCKED) triggers `tmux display-message` + `\a`. Steady-state silence.
 
-**Exit criterion:** You can manually write a few status files, run `hangar-cockpit`, see them grouped, and the tmux status line updates from any window.
+**Exit criterion:** You can manually write a few status files, run `hangar-checkin`, see them grouped, and the tmux status line updates from any window.
 
 ---
 
@@ -102,7 +102,7 @@ Make spawning ergonomic.
 Closing the loop from dashboard back to a specific agent.
 
 - [ ] `agent-jump <slug>` — switch tmux to the workspace's window. From outside tmux, attach to the `agents` session and select the window.
-- [ ] `agent-jump blocked` / `agent-jump feedback` — find matching status files; if multiple, print an interactive list (`hangar-list`-style) and let the user pick. (fzf integration deferred to post-MVP.)
+- [ ] `agent-jump blocked` / `agent-jump feedback` — find matching status files; if multiple, print an interactive list (`agent-list`-style) and let the user pick. (fzf integration deferred to post-MVP.)
 - [ ] Clear error when no matching workspace exists.
 
 **Exit criterion:** From the cockpit you can jump to any blocked agent in one command.
@@ -129,15 +129,15 @@ Close the workspace lifecycle without destroying work.
 
 The MVP is complete when all of the following work end-to-end:
 
-1. `hangar-init` sets up the control directory and validates dependencies.
+1. `hangar-setup` sets up the control directory and validates dependencies.
 2. `agent-spawn` (interactive and non-interactive) creates workspaces correctly, including zero-repo workspaces and resume-on-existing.
 3. `agent-status` / `agent-blocked` update status atomically and trigger the bell on BLOCKED transitions.
-4. `hangar-dashboard` renders grouped statuses + quota pane and flags stale `WORKING` rows.
-5. `hangar-tmux-status` produces a usable status-line one-liner consumed by the user's `~/.tmux.conf`.
-6. `hangar-cockpit` opens the cockpit window with the watched dashboard.
+4. `hangar-watch` renders grouped statuses + quota pane and flags stale `WORKING` rows.
+5. `hangar-statusline` produces a usable status-line one-liner consumed by the user's `~/.tmux.conf`.
+6. `hangar-checkin` opens the cockpit window with the watched dashboard.
 7. `agent-jump` works for `<slug>`, `blocked`, and `feedback`.
 8. `hangar-quota-update` normalizes Claude statusline JSON and the dashboard degrades gracefully when quota data is missing.
-9. `hangar-list` lists all workspaces.
+9. `agent-list` lists all workspaces.
 10. `agent-close` and `agent-clean` cover the close + harvest paths; cleanup refuses to nuke uncommitted work.
 11. Documentation in `README.md` and `documentation/grilled-decisions.md` is current.
 

@@ -49,7 +49,7 @@ def test_write_rejects_unknown_state(hangar_home: Path) -> None:
 
 def test_write_refuses_without_control_dir(hangar_home: Path) -> None:
     # Note: do NOT create the control dir; write should refuse.
-    with pytest.raises(status.StatusError, match="hangar-init"):
+    with pytest.raises(status.StatusError, match="hangar-setup"):
         status.write_status("delta", "WORKING", "no home")
 
 

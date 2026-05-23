@@ -1,4 +1,4 @@
-"""Tests for hangar-init."""
+"""Tests for hangar-setup."""
 
 from __future__ import annotations
 
