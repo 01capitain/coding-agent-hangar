@@ -41,12 +41,12 @@ The dashboard is worthless until something writes to it. Start here.
 
 Make the status visible.
 
-- [ ] `hangar-watch` — render grouped statuses in priority order: BLOCKED → NEEDS_FEEDBACK → FAILED → STARTING_FAILED → READY → WORKING → STARTING → PAUSED → DONE. Compute "minutes since `UPDATED_AT`"; flag `WORKING` rows older than `AGENT_STALE_MINUTES` (default 30) as `[stale]`. Handle missing/partial status files gracefully.
-- [ ] `hangar-checkin` — create / attach the `agents` tmux session; create / reuse the `cockpit` window with a layout that runs `watch -n 2 hangar-watch` in the main pane and a shell in a side pane.
-- [ ] `hangar-statusline` — print the compact one-liner `[B:n] [F:n] [R:n] [W:n] | 5h:U%/E% 7d:U%/E%` with ANSI color codes. Document the `set -g status-right` snippet in README.
-- [ ] Bell-on-transition: `agent-mark-as-blocked` (and any state transition into BLOCKED) triggers `tmux display-message` + `\a`. Steady-state silence.
+- [x] `hangar-watch` — render grouped statuses in priority order: BLOCKED → NEEDS_FEEDBACK → FAILED → STARTING_FAILED → READY → WORKING → STARTING → PAUSED → DONE. Compute "minutes since `UPDATED_AT`"; flag `WORKING` rows older than `AGENT_STALE_MINUTES` (default 30) as `[stale]`. Empty groups skipped. Pure read-only — no side effects, no bell. ANSI colors auto-disable on non-TTY or `--no-color`. Quota pane renders `unavailable` until Phase 3.
+- [x] `hangar-checkin` — create / attach the `agents` tmux session; create / reuse the `cockpit` window with a layout that runs `watch -c -n 2 hangar-watch` in the main pane and a shell in a side pane. Idempotent.
+- [x] `hangar-statusline` — print the compact one-liner `[B:n] [F:n] [R:n] [W:n]` (quota half appended once Phase 3 lands). Plain text — tmux `status-right` doesn't interpret ANSI through `#()`. Documented `set -g status-right` snippet in README.
+- [x] Bell-on-transition decoupled from dashboard: `agent-mark-as-blocked` already rings on every call; `hangar-watch` stays purely a reader (no transition detection, no `last-render.json` side file).
 
-**Exit criterion:** You can manually write a few status files, run `hangar-checkin`, see them grouped, and the tmux status line updates from any window.
+**Exit criterion:** You can manually write a few status files, run `hangar-checkin`, see them grouped, and the tmux status line updates from any window. ✓
 
 ---
 

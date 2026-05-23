@@ -12,9 +12,12 @@ import shutil
 import subprocess
 import sys
 
+from . import ansi as ansi_mod
 from . import config
+from . import dashboard as dashboard_mod
 from . import init as init_mod
 from . import status as status_mod
+from . import tmux as tmux_mod
 
 _NOT_IMPLEMENTED_EXIT = 1
 _USER_ERROR_EXIT = 2
@@ -144,8 +147,22 @@ def dashboard() -> None:
             "`hangar-checkin` runs under `watch -n 2`."
         ),
     )
-    parser.parse_args()
-    _stub("hangar-watch")
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI colors even when stdout is a TTY.",
+    )
+    args = parser.parse_args()
+
+    if not config.status_dir().is_dir():
+        print(
+            "hangar-watch: control directory missing. Run `hangar-setup` first.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    use_color = ansi_mod.should_use_color() and not args.no_color
+    print(dashboard_mod.render_dashboard(use_color=use_color))
 
 
 def tmux_status() -> None:
@@ -156,7 +173,12 @@ def tmux_status() -> None:
         ),
     )
     parser.parse_args()
-    _stub("hangar-statusline")
+
+    if not config.status_dir().is_dir():
+        # Don't yell from inside tmux's status loop — print nothing, exit 0.
+        return
+
+    print(dashboard_mod.render_statusline())
 
 
 def quota_update() -> None:
@@ -180,7 +202,23 @@ def cockpit() -> None:
         ),
     )
     parser.parse_args()
-    _stub("hangar-checkin")
+
+    if not config.status_dir().is_dir():
+        print(
+            "hangar-checkin: control directory missing. Run `hangar-setup` first.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    try:
+        summary = tmux_mod.open_checkin()
+    except tmux_mod.TmuxError as exc:
+        print(f"hangar-checkin: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    # If open_checkin attached, we never get here. If we got here, we were
+    # inside tmux and the active window has switched to the cockpit.
+    print(f"hangar-checkin: {summary}")
 
 
 def jump() -> None:
