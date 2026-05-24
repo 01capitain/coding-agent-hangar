@@ -95,3 +95,48 @@ def test_has_session_returns_false_on_nonzero(
     _, behaviors = tmux_recorder
     behaviors[("has-session", "-t")] = lambda _args: tmux_mod.TmuxResult(1, "", "")
     assert tmux_mod.has_session("agents") is False
+
+
+def test_open_workspace_window_creates_window_and_pretypes_command(
+    monkeypatch: pytest.MonkeyPatch, tmux_recorder
+) -> None:
+    calls, behaviors = tmux_recorder
+    # Session exists, window does not.
+    behaviors[("has-session", "-t")] = lambda _args: tmux_mod.TmuxResult(0, "", "")
+    behaviors[("list-windows", "-t")] = lambda _args: tmux_mod.TmuxResult(0, "", "")
+    monkeypatch.setenv("TMUX", "/fake/tmux-socket,123,0")
+    monkeypatch.setenv("AGENT_COMMAND", "claude")
+
+    summary = tmux_mod.open_workspace_window("perms-refactor", cwd="/tmp/perms")
+
+    new_window = next(c for c in calls if c.args[0] == "new-window")
+    assert "-n" in new_window.args
+    assert "perms-refactor" in new_window.args
+    assert "-c" in new_window.args
+    assert "/tmp/perms" in new_window.args
+
+    send = next(c for c in calls if c.args[0] == "send-keys")
+    assert "claude" in send.args
+    # CRITICAL: no trailing "Enter" — the operator hits Enter when ready.
+    assert "Enter" not in send.args
+
+    assert "created" in summary
+
+
+def test_open_workspace_window_reuses_existing(
+    monkeypatch: pytest.MonkeyPatch, tmux_recorder
+) -> None:
+    calls, behaviors = tmux_recorder
+    behaviors[("has-session", "-t")] = lambda _args: tmux_mod.TmuxResult(0, "", "")
+    behaviors[("list-windows", "-t")] = lambda _args: tmux_mod.TmuxResult(
+        0, "perms-refactor\n", ""
+    )
+    monkeypatch.setenv("TMUX", "/fake/tmux-socket,123,0")
+
+    summary = tmux_mod.open_workspace_window("perms-refactor", cwd="/tmp/perms")
+
+    cmds = [c.args[0] for c in calls]
+    assert "new-window" not in cmds
+    assert "send-keys" not in cmds
+    assert "select-window" in cmds
+    assert "reused" in summary

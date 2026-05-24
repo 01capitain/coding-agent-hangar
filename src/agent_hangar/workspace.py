@@ -102,12 +102,18 @@ def prepare_skeleton(
     slug: str,
     *,
     repos: list[str] | None = None,
+    branch: str | None = None,
     now: datetime | None = None,
 ) -> WorkspaceLayout:
     """Create the workspace dir, ``.agent/``, and the templated metadata files.
 
     Does NOT create worktrees, does NOT open a tmux window, does NOT run
     bootstrap. Those live in :mod:`agent_hangar.spawn` and call this first.
+
+    ``branch``, when provided, is recorded in ``metadata.env`` as
+    ``BRANCH="..."``. It applies to every repo in the workspace — see the
+    ``project-spawn-branch-policy`` memory. A zero-repo planning workspace
+    needs no branch and can omit it.
 
     Refuses to clobber an existing workspace dir — the resume / suffix /
     abort flow is the caller's job (Phase 5). For Phase 4 the
@@ -129,17 +135,19 @@ def prepare_skeleton(
     layout.agent_dir.mkdir(parents=True, exist_ok=False)
 
     layout.agents_md.write_text(
-        _render_template("AGENTS.md.tmpl", slug=slug, repos=repos),
+        _render_template("AGENTS.md.tmpl", slug=slug, repos=repos, branch=branch),
         encoding="utf-8",
     )
     _make_symlink(layout.claude_md, "AGENTS.md")
 
     layout.handoff_md.write_text(
-        _render_template("HANDOFF.md.tmpl", slug=slug, repos=repos),
+        _render_template("HANDOFF.md.tmpl", slug=slug, repos=repos, branch=branch),
         encoding="utf-8",
     )
     layout.metadata_env.write_text(
-        _render_metadata(slug=slug, repos=repos, now=now, layout=layout),
+        _render_metadata(
+            slug=slug, repos=repos, branch=branch, now=now, layout=layout
+        ),
         encoding="utf-8",
     )
 
@@ -154,12 +162,20 @@ def prepare_skeleton(
 # ---------- helpers ----------
 
 
-def _render_template(template_name: str, *, slug: str, repos: list[str]) -> str:
+def _render_template(
+    template_name: str,
+    *,
+    slug: str,
+    repos: list[str],
+    branch: str | None,
+) -> str:
     raw = files(_TEMPLATE_PACKAGE).joinpath(template_name).read_text(encoding="utf-8")
-    return _substitute(raw, slug=slug, repos=repos)
+    return _substitute(raw, slug=slug, repos=repos, branch=branch)
 
 
-def _substitute(text: str, *, slug: str, repos: list[str]) -> str:
+def _substitute(
+    text: str, *, slug: str, repos: list[str], branch: str | None
+) -> str:
     workspace_path = str(config.work_home() / slug)
     repo_list = ", ".join(repos) if repos else "(no repos — planning workspace)"
     repo_bullets = "\n".join(f"- {r}" for r in repos) if repos else "_None — planning workspace._"
@@ -168,6 +184,7 @@ def _substitute(text: str, *, slug: str, repos: list[str]) -> str:
         "{workspace_path}": workspace_path,
         "{repos_inline}": repo_list,
         "{repos_bullets}": repo_bullets,
+        "{branch}": branch or "(not set — zero-repo workspace)",
         "{tmux_session}": config.tmux_session(),
         "{tmux_window}": slug,
         "{agent_command}": config.agent_command(),
@@ -182,6 +199,7 @@ def _render_metadata(
     *,
     slug: str,
     repos: list[str],
+    branch: str | None,
     now: datetime,
     layout: WorkspaceLayout,
 ) -> str:
@@ -191,6 +209,7 @@ def _render_metadata(
         f'SLUG="{slug}"',
         f'WORKSPACE="{layout.workspace_dir}"',
         f'REPOS="{repos_str}"',
+        f'BRANCH="{branch or ""}"',
         f'TMUX_SESSION="{config.tmux_session()}"',
         f'TMUX_WINDOW="{slug}"',
         f'STATUS_FILE="{config.status_path(slug)}"',

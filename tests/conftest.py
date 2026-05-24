@@ -8,6 +8,7 @@ is never read or written during tests.
 from __future__ import annotations
 
 import dataclasses
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -65,3 +66,39 @@ def write_status_with_age(fixed_now: datetime):
 def fixed_now() -> datetime:
     """A deterministic 'now' so age-rendering tests don't flap."""
     return datetime(2026, 5, 23, 19, 0, 0, tzinfo=timezone.utc)
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.fixture
+def tmp_canonical_repo(tmp_path: Path) -> Path:
+    """A working git repo that worktrees can be carved out of.
+
+    Initializes ``tmp_path/canonical`` with one commit on ``main``, and
+    aliases ``origin/main`` to the local main so ``git worktree add ...
+    origin/main`` resolves. Returns the canonical path.
+    """
+    canonical = tmp_path / "canonical"
+    canonical.mkdir()
+    _git("init", "-b", "main", cwd=canonical)
+    _git("config", "user.email", "test@example.com", cwd=canonical)
+    _git("config", "user.name", "Test", cwd=canonical)
+    (canonical / "README.md").write_text("seed\n", encoding="utf-8")
+    _git("add", "README.md", cwd=canonical)
+    _git("commit", "-m", "seed", cwd=canonical)
+    # Fake an ``origin/main`` ref by aliasing it to the local main commit,
+    # so ``worktree add ... origin/main`` works without a real remote.
+    main_sha = subprocess.run(
+        ["git", "rev-parse", "main"],
+        cwd=canonical, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    _git("update-ref", "refs/remotes/origin/main", main_sha, cwd=canonical)
+    return canonical

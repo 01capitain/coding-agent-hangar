@@ -7,12 +7,14 @@ of every session before doing any work.
 
 - **Workspace root:** `{workspace_path}`
 - **Repositories:** {repos_inline}
+- **Branch:** `{branch}` (same name across every repo in this workspace)
 - **tmux:** session `{tmux_session}`, window `{tmux_window}`
 - **Status file:** `{status_path}`
 
 Each repo (when present) is a git worktree under `{workspace_path}/<repo>`
-on branch `agent/{slug}/<repo>`. The canonical repos live elsewhere; do
-**not** push from the worktree — open a PR with the user's tooling instead.
+on the operator-supplied branch above. The canonical repos live elsewhere;
+do **not** push from the worktree — open a PR with the user's tooling
+instead.
 
 ## Reporting status (REQUIRED)
 

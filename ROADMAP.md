@@ -71,20 +71,23 @@ Open items deferred from this phase:
 
 Prove the worktree + tmux + AGENTS.md flow before adding the interactive UI.
 
-- [ ] `agent-spawn <slug> <repo>...` — non-interactive form.
-  - Validate / normalize the slug.
-  - Refuse if `~/agent-work/<slug>` already exists (interactive resume prompt comes in Phase 5).
-  - For each repo: `git fetch --prune` in the canonical, `git worktree add -b agent/<slug>/<repo> <workspace>/<repo> <base_branch>`.
-  - Generate `AGENTS.md` from template; create `CLAUDE.md` symlink.
-  - Generate `.agent/metadata.env`, `.agent/HANDOFF.md`, `.agent/prompt.md`.
-  - Symlink `.agent/status` → the status file path.
-  - Per-repo `bootstrap` runs in background; logs to `~/.agent-control/logs/<slug>-<repo>-bootstrap.log`. Status starts at `STARTING`.
-  - Create tmux window named after the slug with the prompt visible. Switch to it.
-- [ ] Templates for `AGENTS.md`, `HANDOFF.md`, `prompt.md` covering status reporting rules, blocking rules, handoff expectations, slug + workspace + repo paths.
-- [ ] Repo-local `AGENTS.md` in each worktree pointing back to the workspace-level `../AGENTS.md`.
-- [ ] Zero-repo workspaces: `agent-spawn <slug>` with no repos creates a workspace dir + tmux window + AGENTS.md, no worktrees, no bootstrap. Confirms interactively to avoid accidents.
+- [x] `agent-spawn <slug> [repo...] --branch <name>` — non-interactive form.
+  - Slug validated / normalized (`workspace.normalize_slug`, PRD §7.3).
+  - Refuses if `~/agent-work/<slug>` already exists (interactive resume prompt comes in Phase 5).
+  - For each repo: `git fetch --prune` in the canonical, then `git worktree add -b <branch> <workspace>/<repo> <base_branch>`. Branch name is **operator input**, same across every repo — see grilled-decisions §15 resolution.
+  - Generates `AGENTS.md` from template; creates `CLAUDE.md` symlink.
+  - Generates `.agent/metadata.env`, `.agent/HANDOFF.md`. No `prompt.md` — agent CLI opens to an empty conversation; operator's first message is the task.
+  - Symlinks `.agent/status` → the status file path.
+  - Per-repo `bootstrap` runs in background (detached `sh -c` with stdout/stderr to `~/.agent-control/logs/<slug>-<repo>-bootstrap.log`); the wrapper writes `STARTING_FAILED` if exit is non-zero. Status starts at `STARTING`.
+  - Creates tmux window named after the slug with `$AGENT_COMMAND` pre-typed (no Enter). Switches to it.
+- [x] Templates for `AGENTS.md` and `HANDOFF.md` covering status reporting rules, blocking rules, handoff expectations, slug + workspace + branch + repo paths.
+- [x] Zero-repo workspaces: `agent-spawn <slug> [--yes]` creates a workspace dir + tmux window + AGENTS.md, no worktrees, no bootstrap. Confirms interactively when stdin is a tty; `--yes` skips the prompt.
 
-**Exit criterion:** End-to-end: `agent-spawn permissions-refactor backend frontend` creates the workspace, worktrees materialize, tmux window opens, the prompt is visible, bootstrap finishes in the background, status transitions from `STARTING` to ready-for-user.
+**Exit criterion:** End-to-end: `agent-spawn permissions-refactor backend frontend --branch feature/perms` creates the workspace, worktrees materialize on the supplied branch, tmux window opens with the agent command pre-typed, bootstrap runs in background, status is `STARTING`. ✓ (Smoke-validated 2026-05-24.)
+
+Deferred from this phase (live in Phase 5 / later):
+- Repo-local `AGENTS.md` in each worktree pointing back to workspace-level — not yet built; can be added cheaply if Claude's per-worktree context lookup misses the workspace-level file.
+- Resume / suffix / abort prompts on existing slug.
 
 ---
 

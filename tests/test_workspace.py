@@ -133,11 +133,22 @@ def test_prepare_skeleton_refuses_to_clobber(
 def test_prepare_skeleton_substitutes_slug_in_templates(
     initialized_hangar: Path, work_home: Path
 ) -> None:
-    layout = workspace.prepare_skeleton("billing-fix", repos=["backend"])
+    layout = workspace.prepare_skeleton(
+        "billing-fix", repos=["backend"], branch="feature/billing"
+    )
     agents = layout.agents_md.read_text(encoding="utf-8")
     assert "billing-fix" in agents
     assert "agent-mark-as-blocked billing-fix" in agents
     assert "backend" in agents
+    assert "feature/billing" in agents
+
+
+def test_prepare_skeleton_substitutes_branch_placeholder_for_zero_repo(
+    initialized_hangar: Path, work_home: Path
+) -> None:
+    layout = workspace.prepare_skeleton("planning")
+    agents = layout.agents_md.read_text(encoding="utf-8")
+    assert "zero-repo workspace" in agents
 
 
 def test_prepare_skeleton_writes_metadata_env(
@@ -147,13 +158,24 @@ def test_prepare_skeleton_writes_metadata_env(
     layout = workspace.prepare_skeleton(
         "auth-rewrite",
         repos=["backend", "frontend"],
+        branch="feature/auth",
         now=now,
     )
     text = layout.metadata_env.read_text(encoding="utf-8")
     assert 'SLUG="auth-rewrite"' in text
     assert 'REPOS="backend frontend"' in text
+    assert 'BRANCH="feature/auth"' in text
     assert 'TMUX_WINDOW="auth-rewrite"' in text
     assert 'CREATED_AT="2026-05-24T12:00:00Z"' in text
+
+
+def test_prepare_skeleton_branch_omitted_renders_empty(
+    initialized_hangar: Path, work_home: Path
+) -> None:
+    # Zero-repo / planning workspace: no branch supplied; field is empty.
+    layout = workspace.prepare_skeleton("planning-only")
+    text = layout.metadata_env.read_text(encoding="utf-8")
+    assert 'BRANCH=""' in text
 
 
 def test_prepare_skeleton_respects_tmux_session_override(

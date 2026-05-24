@@ -18,8 +18,11 @@ from . import config
 from . import dashboard as dashboard_mod
 from . import init as init_mod
 from . import quota as quota_mod
+from . import repos as repos_mod
+from . import spawn as spawn_mod
 from . import status as status_mod
 from . import tmux as tmux_mod
+from . import workspace as workspace_mod
 
 _NOT_IMPLEMENTED_EXIT = 1
 _USER_ERROR_EXIT = 2
@@ -68,21 +71,130 @@ def spawn() -> None:
         prog="agent-spawn",
         description=(
             "Create a workspace (tmux window, worktrees, AGENTS.md). "
-            "Interactive when args omitted; prompts resume/suffix/abort if slug exists."
+            "Phase 4 ships the non-interactive form; resume/suffix/abort "
+            "and interactive prompts arrive in Phase 5."
         ),
     )
-    parser.add_argument(
-        "slug",
-        nargs="?",
-        help="Workspace slug. If omitted, prompt interactively.",
-    )
+    parser.add_argument("slug", help="Workspace slug. Required.")
     parser.add_argument(
         "repos",
         nargs="*",
         help="Zero or more repo keys from repos.yaml. Zero = planning workspace.",
     )
-    parser.parse_args()
-    _stub("agent-spawn")
+    parser.add_argument(
+        "--branch",
+        required=False,
+        help=(
+            "Branch name to create in each repo's worktree. Required when "
+            "any repos are passed. Same name is used across all repos."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip the zero-repo confirmation prompt.",
+    )
+    args = parser.parse_args()
+
+    if not config.status_dir().is_dir():
+        print(
+            "agent-spawn: control directory missing. Run `hangar-setup` first.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    try:
+        slug = workspace_mod.normalize_slug(args.slug)
+    except workspace_mod.WorkspaceError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    selected_repos = _resolve_repos(args.repos)
+
+    if selected_repos and not args.branch:
+        print(
+            "agent-spawn: --branch is required when one or more repos are passed.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    if not selected_repos and not args.yes:
+        confirmed = _confirm(
+            f"Create zero-repo planning workspace for slug {slug!r}? [y/N] "
+        )
+        if not confirmed:
+            print("agent-spawn: aborted by user.")
+            sys.exit(0)
+
+    try:
+        layout = workspace_mod.prepare_skeleton(
+            slug,
+            repos=[r.name for r in selected_repos],
+            branch=args.branch,
+        )
+    except workspace_mod.WorkspaceError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    try:
+        if selected_repos:
+            spawn_mod.create_worktrees(layout, selected_repos, branch=args.branch)
+            spawn_mod.run_bootstraps(layout, selected_repos)
+    except spawn_mod.SpawnError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    try:
+        status_mod.write_status(
+            slug, "STARTING", "workspace created; bootstrap running"
+        )
+    except status_mod.StatusError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    # Print success BEFORE the tmux call: when ``focus()`` runs from
+    # outside an existing tmux client it ``os.execvp``-replaces this
+    # process with ``tmux attach`` — anything printed after that point
+    # is lost (and the new tmux session covers the screen anyway).
+    print(f"[{slug}] STARTING at {layout.workspace_dir}")
+
+    try:
+        tmux_summary = tmux_mod.open_workspace_window(
+            slug, cwd=str(layout.workspace_dir)
+        )
+        print(f"agent-spawn: {tmux_summary}")
+    except tmux_mod.TmuxError as exc:
+        # The workspace is on disk and status is STARTING — the spawn
+        # succeeded in every way except the tmux flourish. Print the
+        # error but don't blow up the exit code, the user can open the
+        # window manually.
+        print(f"agent-spawn: tmux step skipped ({exc})", file=sys.stderr)
+
+
+def _resolve_repos(repo_keys: list[str]) -> list:
+    if not repo_keys:
+        return []
+    try:
+        all_repos = repos_mod.load_repos()
+    except repos_mod.RepoConfigError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+    resolved = []
+    for key in repo_keys:
+        try:
+            resolved.append(repos_mod.lookup(all_repos, key))
+        except repos_mod.RepoConfigError as exc:
+            print(f"agent-spawn: {exc}", file=sys.stderr)
+            sys.exit(_USER_ERROR_EXIT)
+    return resolved
+
+
+def _confirm(prompt: str) -> bool:
+    try:
+        answer = input(prompt).strip().lower()
+    except EOFError:
+        return False
+    return answer in {"y", "yes"}
 
 
 def status() -> None:

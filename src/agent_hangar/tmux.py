@@ -104,6 +104,57 @@ def focus(session: str, window: str = COCKPIT_WINDOW) -> None:
         os.execvp(TMUX_BINARY, [TMUX_BINARY, "attach", "-t", session])
 
 
+def ensure_workspace_window(session: str, slug: str, *, cwd: str, command: str) -> bool:
+    """Create a tmux window named after ``slug`` if one doesn't exist yet.
+
+    Returns ``True`` when a new window was created, ``False`` when an
+    existing one was reused. The window is opened with ``cwd`` as its
+    starting directory, and ``command`` is **pre-typed** (via
+    ``send-keys`` without trailing ``Enter``) so the operator hits Enter
+    when ready — per the Phase-4 tmux-presentation decision.
+    """
+    if has_window(session, slug):
+        return False
+    target = f"{session}:"
+    _run(["new-window", "-t", target, "-n", slug, "-c", cwd], check=True)
+    if command:
+        _run(
+            [
+                "send-keys",
+                "-t",
+                f"{session}:{slug}",
+                command,
+                # Deliberately NO trailing "Enter" — the operator presses
+                # Enter when they're ready to launch the agent.
+            ],
+            check=True,
+        )
+    return True
+
+
+def open_workspace_window(slug: str, *, cwd: str) -> str:
+    """High-level entry point used by ``cli.spawn``.
+
+    Ensures the ``agents`` session exists, creates the workspace window
+    if missing (or reuses it), focuses it. Returns a short summary
+    string suitable for printing.
+    """
+    session = config.tmux_session()
+    created_session = not has_session(session)
+    ensure_session(session)
+    created_window = ensure_workspace_window(
+        session, slug, cwd=cwd, command=config.agent_command()
+    )
+    focus(session, slug)
+    parts = []
+    if created_session:
+        parts.append(f"session `{session}` created")
+    parts.append(
+        f"window `{slug}` " + ("created" if created_window else "reused")
+    )
+    return "; ".join(parts)
+
+
 def open_checkin() -> str:
     """High-level entry point used by ``cli.cockpit``.
 
