@@ -11,8 +11,8 @@ Last updated: 2026-05-24
 
 ## Status at a glance
 
-- **Phases 0, 1, 2, 3, 4, 5 complete.** Phases 6–7 ahead.
-- **163 tests passing**, ruff clean. Working tree had Phase-5 changes
+- **Phases 0, 1, 2, 3, 4, 5, 6 complete.** Phase 7 ahead.
+- **176 tests passing**, ruff clean. Working tree had Phase-6 changes
   uncommitted at end of session — push status is whatever git says
   when you read this.
 - Local validation done end-to-end:
@@ -60,8 +60,8 @@ All three should be silent-on-success. Then look at:
 | 3 — Quota | ✅ | `hangar-quota-update` (real), quota pane + compact fragment, `scripts/claude-statusline` | 90 |
 | 4 — `agent-spawn` non-interactive | ✅ | `agent-spawn <slug> [repos...] --branch <name>` + scaffolding + worktree + background bootstrap + tmux window | 136 |
 | 5 — `agent-spawn` interactive + resume | ✅ | bare `agent-spawn` prompts; `--resume` / `--suffix`; slug normalize warning; branch-collision pre-check (interactive reuse) | 163 |
-| 6 — `agent-jump` | ⏳ Next | `<slug>`/`blocked`/`feedback` | — |
-| 7 — Done signal + teardown | ⏳ | `agent-mark-done`, `agent-teardown` | — |
+| 6 — `agent-jump` | ✅ | `<slug>`, `blocked`, `feedback`; multi-match picker; clear errors | 176 |
+| 7 — Done signal + teardown | ⏳ Next | `agent-mark-done`, `agent-teardown` | — |
 
 `agent-mark-done` is a stub but its shape is fully decided: it mirrors
 `agent-mark-as-blocked` (state + bell + tmux display-message). Implementation
@@ -308,26 +308,120 @@ All in `grilled-decisions.md`. Short version:
   tmux statusline + cockpit window. Reconsider only when the empirical
   signal (bell + statusline insufficient) actually arrives.
 
-## Next: Phase 6 (`agent-jump`)
+## Phase 6 — what shipped
 
-Spec lives in `ROADMAP.md` Phase 6. Subtasks:
+`agent-jump` is the cockpit-to-workspace shortcut. The stub became a
+real command in one focused pass; the heavy lifting is reuse of
+existing tmux + status helpers, not new infrastructure.
 
-1. **`agent-jump <slug>`** — switch tmux to the workspace window for
-   `<slug>`. From outside tmux, attach to the `agents` session and
-   select the window. The plumbing already exists in `tmux.focus()` and
-   `tmux.ensure_workspace_window()`; the jump command is essentially
-   the focus half without the worktree/bootstrap setup. Clear error
-   when no matching workspace exists on disk.
-2. **`agent-jump blocked`** / **`agent-jump feedback`** — read status
-   files via `status_mod.list_records()`, filter to `BLOCKED` and
-   `NEEDS_FEEDBACK` respectively. Zero matches → clear error. One match
-   → jump. Multiple matches → interactive numbered list (same picker
-   style as Phase 5's repo picker). fzf integration is Post-MVP.
+### CLI surface
 
-The current `cli.jump` is a parsed-then-`_stub` skeleton; argument
-parsing is already in place. Tests should follow the Phase-5 pattern:
-seed status files via `status.write_status`, stub `tmux.focus` /
-`tmux.open_workspace_window`, drive `input()` via `io.StringIO`.
+```
+agent-jump <slug>         # focus the workspace window for <slug>
+agent-jump blocked        # all BLOCKED workspaces
+agent-jump feedback       # all NEEDS_FEEDBACK workspaces
+```
+
+The category token is case-insensitive — `agent-jump BLOCKED` works
+too. For the slug form, the raw input is run through
+`workspace.normalize_slug` and a one-line warning is emitted on stderr
+when the result differs (same shape as `agent-spawn`'s warning).
+
+### Behavior
+
+- **Slug form.** Looks at `workspace.layout_for(slug).workspace_dir`. If
+  missing, exits 2 with `no workspace matches <slug>` and prints the
+  path it was looking at. If present, calls
+  `tmux.open_workspace_window(slug, cwd=...)`, which reuses an existing
+  window or creates one with `claude` pre-typed. From outside tmux,
+  `tmux.focus()` execvp's into `tmux attach`, so the focus line is
+  printed BEFORE that call (mirrors the Phase-4 success-line pattern).
+- **Category form.** `status.list_records()` filtered to the matching
+  state; sorted by `-updated_at` so the newest entry is at the top
+  (matches the `hangar-watch` ordering within a single group). Zero
+  matches → exit 2. Exactly one match → auto-jump with a one-line
+  announce. Many matches → numbered picker with slug + relative age +
+  summary; `a` or blank aborts; out-of-range / non-numeric reprompts.
+- **Stale-status guard.** Even on the category path we re-check that
+  the workspace dir exists before calling tmux. If a status file lingers
+  after a workspace dir was deleted by hand, the user sees a specific
+  "status file points at … but workspace dir is missing at …" error
+  rather than a confusing tmux failure.
+
+### Modules touched
+
+- `cli.py` — replaces the `_stub("agent-jump")` body with real
+  dispatch: `_jump_to_slug` and `_jump_to_category`, plus
+  `_pick_record` for the multi-match picker and `_focus_workspace` to
+  centralize the tmux call + pre-call announce. `_normalize_with_warning`
+  picked up an optional `prog` kwarg so the warning is correctly
+  attributed to `agent-jump` instead of `agent-spawn` when invoked from
+  the jump path. The `_JUMP_CATEGORIES` dict maps the user-facing token
+  to the canonical state constant.
+
+No changes needed in `tmux.py`, `status.py`, or `workspace.py` —
+everything the jump command needs was already there from earlier
+phases.
+
+### Tests
+
+176 total (13 new in `tests/test_cli_phase6.py`):
+
+- Slug happy path; slug normalization warning; missing slug → error.
+- Category: zero / one / many for both `blocked` and `feedback`;
+  picker abort (`a`), picker reprompt on out-of-range and non-numeric.
+- Case-insensitive category token (`BLOCKED` works).
+- `agent-jump` without a hangar exits with the standard "run
+  hangar-setup" message.
+- Stale-status guard: BLOCKED status pointing at a slug whose
+  workspace dir doesn't exist surfaces a clear error rather than a
+  cryptic tmux failure.
+
+### Smoke (manual, 2026-05-24)
+
+In an isolated `AGENT_CONTROL_HOME` + `AGENT_WORK_HOME`:
+
+- Seeded two BLOCKED workspaces and ran `agent-jump blocked`; the
+  picker printed both rows (most-recent first, ages and summaries
+  inline) and aborted cleanly when given `a`.
+- `agent-jump ghost` exited 2 with `no workspace matches 'ghost'` and
+  named the resolved path so the operator can see where it looked.
+- `agent-jump "Alpha"` printed
+  `slug normalized to 'alpha' (from 'Alpha')` and then attempted the
+  tmux focus (which bailed in the non-tty smoke shell — expected,
+  same as the Phase-4 and Phase-5 smokes).
+
+## Next: Phase 7 (`agent-mark-done` + `agent-teardown`)
+
+Spec lives in `ROADMAP.md` Phase 7 and `grilled-decisions.md` §10.
+
+1. **`agent-mark-done <slug> <summary>`** — copy-paste of
+   `cli.blocked()` with `DONE` instead of `BLOCKED`. State transition +
+   bell + tmux display-message. Does NOT touch worktrees, branches, or
+   the tmux window. The shape is already in the CLI (`cli.mark_done`
+   parses args and exits via `_stub`); fill the body.
+2. **`agent-teardown <slug>` (guided checklist).** The big one. New
+   module — probably `agent_hangar/teardown.py` — that:
+   1. Loads workspace layout + reads `.agent/metadata.env` to get the
+      repo list.
+   2. For each repo: runs `git status -sb` in the worktree, checks
+      whether `<branch>` is merged into the canonical's `origin/main`
+      (or the configured base branch).
+   3. Refuses to proceed without `--force` if any worktree has
+      uncommitted changes. Same rule applies if any branch isn't merged
+      AND the user hasn't confirmed it's intentional.
+   4. Sequentially prompts: "PR opened? [y/N]", "PR merged? [y/N]",
+      "OK to remove worktree at X? [y/N]", "OK to delete agent branch
+      <branch>? [y/N]".
+   5. On all-yes: `git worktree remove` per repo, delete branches,
+      archive the status file to `~/.agent-control/status/archive/
+      <slug>-<timestamp>.status`, remove the workspace dir, optionally
+      kill the tmux window (decision pending — see grilled-decisions
+      §10 "done signal" wording).
+
+Tests will need a real tmp git canonical + worktree for the
+checklist's git probes, and `io.StringIO` for the prompt chain. Reuse
+the Phase-4/5 fixture style.
 
 ## Open design questions (don't decide them speculatively)
 

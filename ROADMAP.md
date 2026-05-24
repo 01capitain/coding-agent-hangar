@@ -108,11 +108,11 @@ Make spawning ergonomic.
 
 Closing the loop from dashboard back to a specific agent.
 
-- [ ] `agent-jump <slug>` — switch tmux to the workspace's window. From outside tmux, attach to the `agents` session and select the window.
-- [ ] `agent-jump blocked` / `agent-jump feedback` — find matching status files; if multiple, print an interactive list (`agent-list`-style) and let the user pick. (fzf integration deferred to post-MVP.)
-- [ ] Clear error when no matching workspace exists.
+- [x] `agent-jump <slug>` — switch tmux to the workspace's window. From outside tmux, attach to the `agents` session and select the window. Slug is normalized; warns when the raw input differs.
+- [x] `agent-jump blocked` / `agent-jump feedback` — find matching status files; if multiple, print an interactive numbered list (sorted most-recent-first to match the dashboard) and let the user pick. `a` aborts. fzf integration deferred to post-MVP.
+- [x] Clear error when no matching workspace exists on disk, and when a status file points at a slug whose workspace dir is missing.
 
-**Exit criterion:** From the cockpit you can jump to any blocked agent in one command.
+**Exit criterion:** From the cockpit you can jump to any blocked agent in one command. ✓ (176 tests passing; smoke-validated 2026-05-24.)
 
 ---
 

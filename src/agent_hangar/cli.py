@@ -431,15 +431,15 @@ def _reattach_workspace(slug: str, layout) -> None:
         print(f"agent-spawn: tmux step skipped ({exc})", file=sys.stderr)
 
 
-def _normalize_with_warning(raw: str) -> str:
+def _normalize_with_warning(raw: str, *, prog: str = "agent-spawn") -> str:
     try:
         normalized = workspace_mod.normalize_slug(raw)
     except workspace_mod.WorkspaceError as exc:
-        print(f"agent-spawn: {exc}", file=sys.stderr)
+        print(f"{prog}: {exc}", file=sys.stderr)
         sys.exit(_USER_ERROR_EXIT)
     if normalized != raw:
         print(
-            f"agent-spawn: slug normalized to '{normalized}' (from {raw!r}).",
+            f"{prog}: slug normalized to '{normalized}' (from {raw!r}).",
             file=sys.stderr,
         )
     return normalized
@@ -632,14 +632,114 @@ def cockpit() -> None:
     print(f"hangar-checkin: {summary}")
 
 
+_JUMP_CATEGORIES: dict[str, str] = {
+    "blocked": "BLOCKED",
+    "feedback": "NEEDS_FEEDBACK",
+}
+
+
 def jump() -> None:
     parser = argparse.ArgumentParser(
         prog="agent-jump",
-        description="Switch tmux to a workspace, or to the next blocked/feedback workspace.",
+        description=(
+            "Switch tmux to a workspace, or to one of the workspaces currently "
+            "BLOCKED / NEEDS_FEEDBACK. From outside tmux this attaches to the "
+            "`agents` session and selects the target window."
+        ),
     )
     parser.add_argument("target", help="A slug, or one of: blocked, feedback.")
-    parser.parse_args()
-    _stub("agent-jump")
+    args = parser.parse_args()
+
+    if not config.status_dir().is_dir():
+        print(
+            "agent-jump: control directory missing. Run `hangar-setup` first.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    state = _JUMP_CATEGORIES.get(args.target.lower())
+    if state is not None:
+        _jump_to_category(args.target.lower(), state)
+        return
+
+    _jump_to_slug(args.target)
+
+
+def _jump_to_slug(raw: str) -> None:
+    slug = _normalize_with_warning(raw, prog="agent-jump")
+    layout = workspace_mod.layout_for(slug)
+    if not layout.workspace_dir.exists():
+        print(
+            f"agent-jump: no workspace matches {slug!r} (looked at {layout.workspace_dir}).",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+    _focus_workspace(slug, layout)
+
+
+def _jump_to_category(label: str, state: str) -> None:
+    records = [r for r in status_mod.list_records() if r.state == state]
+    if not records:
+        print(f"agent-jump: no {state} workspaces.", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    # Most-recent-first within the (single-state) group — matches the
+    # hangar-watch dashboard ordering so the operator sees the same shape.
+    records.sort(key=lambda r: -r.updated_at.timestamp())
+
+    if len(records) == 1:
+        target = records[0]
+    else:
+        target = _pick_record(label, state, records)
+        if target is None:
+            print("agent-jump: aborted by user.")
+            sys.exit(0)
+
+    layout = workspace_mod.layout_for(target.slug)
+    if not layout.workspace_dir.exists():
+        print(
+            f"agent-jump: status file points at {target.slug!r} but workspace dir "
+            f"is missing at {layout.workspace_dir}.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+    _focus_workspace(target.slug, layout)
+
+
+def _pick_record(
+    label: str, state: str, records: list[status_mod.StatusRecord]
+) -> status_mod.StatusRecord | None:
+    print(f"Multiple {state} workspaces. Pick one to jump to:")
+    for i, record in enumerate(records, start=1):
+        age = status_mod.relative_age(record.updated_at)
+        print(f"  {i:>2}. {record.slug:<28} {age:<10} {record.summary}")
+    while True:
+        try:
+            raw = input("Choice (number, or 'a' to abort): ").strip().lower()
+        except EOFError:
+            return None
+        if raw in {"", "a", "abort"}:
+            return None
+        try:
+            idx = int(raw)
+        except ValueError:
+            print("  (expected a number or 'a')")
+            continue
+        if idx < 1 or idx > len(records):
+            print(f"  (out of range: pick 1..{len(records)})")
+            continue
+        return records[idx - 1]
+
+
+def _focus_workspace(slug: str, layout) -> None:
+    # Print BEFORE the tmux call: focus() may execvp into `tmux attach`
+    # from outside a tmux client, which replaces this process.
+    print(f"agent-jump: focusing {slug} at {layout.workspace_dir}")
+    try:
+        summary = tmux_mod.open_workspace_window(slug, cwd=str(layout.workspace_dir))
+        print(f"agent-jump: {summary}")
+    except tmux_mod.TmuxError as exc:
+        print(f"agent-jump: tmux step skipped ({exc})", file=sys.stderr)
 
 
 def list_workspaces() -> None:
