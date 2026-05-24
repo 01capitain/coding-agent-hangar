@@ -29,7 +29,7 @@ def work_home() -> Path:
     env = os.environ.get("AGENT_WORK_HOME")
     if env:
         return Path(env).expanduser()
-    return Path.home() / "agent-work"
+    return Path.home() / "agent-hangar"
 
 
 def config_dir() -> Path:

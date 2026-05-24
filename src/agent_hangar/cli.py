@@ -396,6 +396,11 @@ def _finalize_spawn(
             )
             spawn_mod.run_bootstraps(layout, selected_repos)
     except spawn_mod.SpawnError as exc:
+        # Roll back the half-built workspace so the slug is free for retry —
+        # prepare_skeleton has already created the dir at this point, and
+        # create_worktrees may have added some worktrees to canonicals
+        # before failing on a later one.
+        spawn_mod.cleanup_failed_spawn(layout, selected_repos)
         print(f"agent-spawn: {exc}", file=sys.stderr)
         sys.exit(_USER_ERROR_EXIT)
 

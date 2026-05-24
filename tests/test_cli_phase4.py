@@ -27,7 +27,7 @@ def _run(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> int:
 
 @pytest.fixture
 def work_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    work = tmp_path / "agent-work"
+    work = tmp_path / "agent-hangar"
     monkeypatch.setenv("AGENT_WORK_HOME", str(work))
     return work
 
@@ -195,6 +195,37 @@ def test_spawn_errors_when_workspace_exists(
     assert rc != 0
     err = capsys.readouterr().err
     assert "already exists" in err
+
+
+def test_spawn_cleans_up_workspace_dir_when_worktree_add_fails(
+    work_home: Path,
+    repos_yaml,
+    tmp_canonical_repo: Path,
+    stub_tmux,
+    stub_bootstrap,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Reproduces the breakfast-backend incident: prepare_skeleton has
+    # created the workspace dir, then create_worktrees blows up. The
+    # workspace dir must be gone afterwards so the slug is free for retry.
+    def boom(layout, repos, *, branch, reuse_in):
+        raise spawn.SpawnError("git worktree add failed: branch already checked out")
+
+    monkeypatch.setattr(spawn, "create_worktrees", boom)
+
+    rc = _run(
+        monkeypatch,
+        ["agent-spawn", "breakfast-backend", "backend", "--branch", "feature/x"],
+    )
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "git worktree add failed" in err
+
+    layout = workspace.layout_for("breakfast-backend")
+    assert not layout.workspace_dir.exists()
+    # No status file written either (write_status only runs on success).
+    assert not config.status_path("breakfast-backend").exists()
 
 
 def test_spawn_errors_without_setup(

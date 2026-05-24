@@ -24,6 +24,7 @@ Design notes:
 from __future__ import annotations
 
 import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -149,6 +150,42 @@ def check_branch_collisions(
 ) -> list[Repo]:
     """Return the subset of ``repos`` where ``branch`` already exists."""
     return [r for r in repos if branch_exists_in_canonical(r, branch, runner=runner)]
+
+
+# ---------- rollback after failed spawn ----------
+
+
+def cleanup_failed_spawn(
+    layout: WorkspaceLayout,
+    repos: Sequence[Repo],
+    *,
+    runner: CommandRunner | None = None,
+) -> None:
+    """Best-effort rollback after :func:`create_worktrees` raises mid-flight.
+
+    For each repo whose worktree subdir was created, asks git to remove it
+    with ``--force`` so the canonical's ``worktrees/`` registry is also
+    cleaned (a bare ``rmtree`` would leave dangling refs that ``git worktree
+    prune`` would later have to mop up). Then removes the workspace dir
+    itself.
+
+    Per-repo git failures are swallowed: cleanup is a last-ditch effort and
+    must not mask the original :class:`SpawnError` the caller is about to
+    surface. The workspace dir is always removed at the end so
+    ``agent-spawn`` can be re-run with the same slug.
+    """
+    run = runner or _default_runner
+    for repo in repos:
+        worktree_dir = layout.workspace_dir / repo.name
+        if not worktree_dir.exists():
+            continue
+        if repo.path.exists() and (worktree_dir / ".git").exists():
+            run([
+                "git", "-C", str(repo.path),
+                "worktree", "remove", "--force", str(worktree_dir),
+            ])
+    if layout.workspace_dir.exists():
+        shutil.rmtree(layout.workspace_dir, ignore_errors=True)
 
 
 # ---------- background bootstraps ----------

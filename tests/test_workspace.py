@@ -59,7 +59,7 @@ def test_normalize_slug_rejects_non_string() -> None:
 def test_layout_resolves_paths_under_work_home(
     initialized_hangar: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    work = tmp_path / "agent-work"
+    work = tmp_path / "agent-hangar"
     monkeypatch.setenv("AGENT_WORK_HOME", str(work))
     layout = workspace.layout_for("alpha")
     assert layout.workspace_dir == work / "alpha"
@@ -80,7 +80,7 @@ def work_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Path:
     """Redirect AGENT_WORK_HOME at a tmp dir so workspace creation is isolated."""
-    work = tmp_path / "agent-work"
+    work = tmp_path / "agent-hangar"
     monkeypatch.setenv("AGENT_WORK_HOME", str(work))
     return work
 

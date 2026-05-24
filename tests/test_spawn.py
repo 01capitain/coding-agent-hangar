@@ -173,6 +173,92 @@ def test_create_worktrees_reuse_existing_branch(
     assert "preexisting" in worktree_calls[0]
 
 
+# ---------- cleanup_failed_spawn ----------
+
+
+def test_cleanup_failed_spawn_removes_workspace_and_worktrees(
+    initialized_hangar: Path,
+    work_home: Path,
+    tmp_canonical_repo: Path,
+) -> None:
+    # Spawn one worktree successfully, then simulate a failure for a second
+    # repo and confirm cleanup removes both the workspace dir and the first
+    # worktree's registration in the canonical.
+    repo = repos_mod.Repo(
+        key="backend",
+        name="backend-core-nestjs",
+        path=tmp_canonical_repo,
+        default=True,
+        bootstrap="",
+        base_branch="origin/main",
+    )
+    layout = workspace.prepare_skeleton(
+        "rollback-test", repos=[repo.name], branch="feature/rollback"
+    )
+    spawn.create_worktrees(layout, [repo], branch="feature/rollback")
+    assert (layout.workspace_dir / "backend-core-nestjs").is_dir()
+
+    spawn.cleanup_failed_spawn(layout, [repo])
+
+    assert not layout.workspace_dir.exists()
+    # The canonical no longer lists the removed worktree.
+    listing = subprocess.run(
+        ["git", "-C", str(tmp_canonical_repo), "worktree", "list", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert str(layout.workspace_dir / "backend-core-nestjs") not in listing
+
+
+def test_cleanup_failed_spawn_is_idempotent_with_no_worktrees(
+    initialized_hangar: Path,
+    work_home: Path,
+    tmp_path: Path,
+) -> None:
+    # Skeleton-only workspace (no worktree subdirs created yet) is the
+    # case the breakfast-backend incident hit: create_worktrees failed
+    # before any add ran, leaving only the workspace dir behind.
+    layout = workspace.prepare_skeleton("alpha", repos=["a"], branch="b")
+    repo = repos_mod.Repo(
+        "a", "a", tmp_path / "no-canonical", False, "", "origin/main"
+    )
+    assert layout.workspace_dir.is_dir()
+
+    spawn.cleanup_failed_spawn(layout, [repo])
+
+    assert not layout.workspace_dir.exists()
+
+
+def test_cleanup_failed_spawn_swallows_git_errors(
+    initialized_hangar: Path,
+    work_home: Path,
+    tmp_canonical_repo: Path,
+) -> None:
+    # If `git worktree remove` fails (e.g. corrupted state), cleanup must
+    # still remove the workspace dir — the original SpawnError is what the
+    # operator needs to see, not a noisy secondary failure.
+    repo = repos_mod.Repo(
+        key="backend",
+        name="backend-core-nestjs",
+        path=tmp_canonical_repo,
+        default=True,
+        bootstrap="",
+        base_branch="origin/main",
+    )
+    layout = workspace.prepare_skeleton(
+        "noisy-cleanup", repos=[repo.name], branch="feature/cleanup"
+    )
+    # Create the subdir + a .git marker so cleanup tries the git path.
+    worktree_dir = layout.workspace_dir / "backend-core-nestjs"
+    worktree_dir.mkdir()
+    (worktree_dir / ".git").write_text("gitdir: /nowhere\n", encoding="utf-8")
+
+    def runner(args):
+        return _fake_completed(rc=1, stderr="boom")
+
+    spawn.cleanup_failed_spawn(layout, [repo], runner=runner)
+    assert not layout.workspace_dir.exists()
+
+
 # ---------- run_bootstraps ----------
 
 
@@ -270,6 +356,6 @@ class _DummyProcess:
 @pytest.fixture
 def work_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Local copy of the work_home fixture from test_workspace.py."""
-    work = tmp_path / "agent-work"
+    work = tmp_path / "agent-hangar"
     monkeypatch.setenv("AGENT_WORK_HOME", str(work))
     return work

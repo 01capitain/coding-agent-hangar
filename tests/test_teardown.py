@@ -25,7 +25,7 @@ def _git(*args: str, cwd: Path) -> None:
 
 @pytest.fixture
 def work_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    work = tmp_path / "agent-work"
+    work = tmp_path / "agent-hangar"
     monkeypatch.setenv("AGENT_WORK_HOME", str(work))
     return work
 

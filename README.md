@@ -28,7 +28,7 @@ One **slug** identifies one **workspace**. A workspace has:
 A workspace can have **zero** worktrees (useful for planning or PRD agents that don't need code), **one** worktree (single-repo tasks — the common case), or **many** (cross-repo features). Repository selection is per-spawn, deliberately not pre-checked.
 
 ```text
-~/agent-work/permissions-refactor/
+~/agent-hangar/permissions-refactor/
 ├── AGENTS.md
 ├── CLAUDE.md -> AGENTS.md
 ├── .agent/
@@ -201,14 +201,14 @@ Fields:
 ```bash
 # Override any of these in ~/.bashrc / ~/.zshrc; defaults shown.
 export AGENT_CONTROL_HOME="$HOME/.agent-control"
-export AGENT_WORK_HOME="$HOME/agent-work"
+export AGENT_WORK_HOME="$HOME/agent-hangar"
 export AGENT_TMUX_SESSION="agents"
 export AGENT_BASE_BRANCH="origin/main"
 export AGENT_COMMAND="claude"
 export AGENT_STALE_MINUTES="30"
 ```
 
-If you want workspaces under `/var/www/agent-work/` (for nginx wildcard vhosts), set `AGENT_WORK_HOME=/var/www/agent-work`.
+If you want workspaces under `/var/www/agent-hangar/` (for nginx wildcard vhosts), set `AGENT_WORK_HOME=/var/www/agent-hangar`.
 
 ## Daily workflow
 
@@ -373,8 +373,8 @@ Every Claude Code session refreshes the shared quota file. The cockpit picks up 
 | `~/.agent-control/logs/<slug>.log` | Append-only log of every status transition. |
 | `~/.agent-control/logs/<slug>-<repo>-bootstrap.log` | Stdout/stderr from each background bootstrap. |
 | `~/.agent-control/quotas/claude.json` | Latest normalized Claude quota snapshot. |
-| `~/agent-work/<slug>/` | Workspace directory; contains `AGENTS.md`, `.agent/`, and the worktrees. |
-| `~/agent-work/<slug>/.agent/metadata.env` | Per-workspace state: slug, repos, branch, tmux window name, created-at. |
+| `~/agent-hangar/<slug>/` | Workspace directory; contains `AGENTS.md`, `.agent/`, and the worktrees. |
+| `~/agent-hangar/<slug>/.agent/metadata.env` | Per-workspace state: slug, repos, branch, tmux window name, created-at. |
 
 Override the roots with `AGENT_CONTROL_HOME` and `AGENT_WORK_HOME`.
 
