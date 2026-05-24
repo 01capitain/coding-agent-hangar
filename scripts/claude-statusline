@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# claude-statusline — drop-in wrapper for ~/.claude/settings.json
+#                     ``statusLine.command``.
+#
+# Claude Code invokes the configured ``statusLine.command`` and pipes the
+# session JSON to its stdin; whatever the command writes to stdout becomes
+# the rendered statusline.
+#
+# This wrapper:
+#   1. Reads the JSON from stdin (once).
+#   2. Forwards a copy to ``hangar-quota-update`` so the hangar's quota
+#      snapshot at ~/.agent-control/quotas/claude.json stays fresh.
+#   3. Forwards another copy to the user's existing renderer, if one is
+#      configured via ``HANGAR_STATUSLINE_RENDERER``. Whatever that renderer
+#      prints is passed through unchanged.
+#
+# If ``HANGAR_STATUSLINE_RENDERER`` is unset the wrapper still updates the
+# snapshot but writes no statusline output. That matches a fresh install:
+# the hangar starts learning quota state immediately, and the user opts in
+# to a richer statusline whenever they want by pointing the env var at
+# their script (e.g. ~/.claude/statusline-command.sh).
+#
+# Wiring:
+#   ~/.claude/settings.json:
+#     {
+#       "statusLine": {
+#         "type": "command",
+#         "command": "/path/to/agent-hangar/scripts/claude-statusline"
+#       }
+#     }
+#   shell rc (optional):
+#     export HANGAR_STATUSLINE_RENDERER="$HOME/.claude/statusline-command.sh"
+
+set -u
+
+payload=$(cat)
+
+# Step 1: feed the snapshot writer. Discard its output so the user's
+# renderer owns stdout. Failures are non-fatal — the statusline must still
+# render even if the hangar is missing or misinstalled.
+if command -v hangar-quota-update >/dev/null 2>&1; then
+    printf '%s' "$payload" | hangar-quota-update >/dev/null 2>&1 || true
+fi
+
+# Step 2: delegate to the user's renderer if configured.
+if [ -n "${HANGAR_STATUSLINE_RENDERER:-}" ] && [ -x "${HANGAR_STATUSLINE_RENDERER}" ]; then
+    printf '%s' "$payload" | "$HANGAR_STATUSLINE_RENDERER"
+fi

@@ -54,12 +54,16 @@ Make the status visible.
 
 Verify the shared Claude quota half of the dashboard.
 
-- [ ] `hangar-quota-update` — read JSON from stdin, extract `rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}` and `context_window.used_percentage`. Convert Unix timestamps to ISO 8601. Write normalized `~/.agent-control/quotas/claude.json`. Crash-resistant on missing fields. Keep a `raw_available` summary for debugging.
-- [ ] Dashboard quota pane — two-line per window layout (used bar + elapsed bar + reset countdown). Color the used bar by burn-delta (green ≤0, yellow ≤10, orange ≤25, red >25). Show `unavailable` when the quota file is missing or stale beyond a threshold.
-- [ ] `scripts/claude-statusline` — bash wrapper for `~/.claude/settings.json` `statusLine.command`. Pipes the JSON into `hangar-quota-update`, then renders the user's existing statusline output unchanged.
-- [ ] Mocked quota fixtures in `tests/` to exercise the renderer without a live Claude session.
+- [x] `hangar-quota-update` — read JSON from stdin, extract `rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}` and `context_window.used_percentage`. Convert Unix timestamps to ISO 8601. Atomic write to `~/.agent-control/quotas/claude.json`. Tolerant of missing fields (only writes keys it could parse). Empty stdin is a no-op.
+- [x] Dashboard quota pane — two-line per window layout (used bar + elapsed bar + reset countdown). Color the used bar by burn-delta (green ≤0, yellow ≤10, orange ≤25, red >25). Falls back to `unavailable` when the quota file is missing.
+- [x] `scripts/claude-statusline` — bash wrapper for `~/.claude/settings.json` `statusLine.command`. Pipes the JSON into `hangar-quota-update`, then delegates to whatever script `HANGAR_STATUSLINE_RENDERER` points at (passthrough). Safe with no renderer configured.
+- [x] Quota tests cover read/render/normalize without a live Claude session.
 
-**Exit criterion:** With the statusline wrapper installed, the cockpit's quota pane updates whenever you use Claude Code. Removing the wrapper degrades the pane to `unavailable` without breaking the rest.
+**Exit criterion:** With the statusline wrapper installed, the cockpit's quota pane updates whenever you use Claude Code. Removing the wrapper degrades the pane to `unavailable` without breaking the rest. ✓
+
+Open items deferred from this phase:
+- "Stale snapshot beyond a threshold" check: not implemented. ``load_snapshot`` returns whatever the on-disk file says; no max-age cliff. Decide once we have evidence that an old snapshot misleads more than it helps.
+- Persisting `raw_available` for debugging: dropped. The normalized snapshot is small enough to interpret directly; keeping the raw payload doubles disk churn for no current consumer.
 
 ---
 

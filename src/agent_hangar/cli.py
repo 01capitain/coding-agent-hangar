@@ -8,6 +8,7 @@ exit code rather than a stack trace.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from . import ansi as ansi_mod
 from . import config
 from . import dashboard as dashboard_mod
 from . import init as init_mod
+from . import quota as quota_mod
 from . import status as status_mod
 from . import tmux as tmux_mod
 
@@ -190,7 +192,30 @@ def quota_update() -> None:
         ),
     )
     parser.parse_args()
-    _stub("hangar-quota-update")
+
+    raw = sys.stdin.read()
+    if not raw.strip():
+        # Empty stdin is the common no-op case (statusline misconfigured or
+        # piped from /dev/null during testing). Exit clean — the wrapper still
+        # has to render the user's existing statusline.
+        return
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"hangar-quota-update: invalid JSON on stdin ({exc})", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    if not isinstance(payload, dict):
+        print("hangar-quota-update: expected a JSON object on stdin", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    normalized = quota_mod.normalize_payload(payload)
+    try:
+        quota_mod.write_snapshot(normalized)
+    except OSError as exc:
+        print(f"hangar-quota-update: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
 
 
 def cockpit() -> None:

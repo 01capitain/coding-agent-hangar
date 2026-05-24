@@ -15,6 +15,8 @@ RED = "\033[31m"
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
 CYAN = "\033[36m"
+# 256-color orange — sits between yellow and red in the quota burn-delta scale.
+ORANGE = "\033[38;5;208m"
 
 
 def style(text: str, code: str, *, use_color: bool = True) -> str:

@@ -5,19 +5,24 @@ docs are still `README.md` (user-facing) and `documentation/grilled-decisions.md
 (design decisions). This file is the **per-session bridge**: where we left
 off, what was decided that day, and what NOT to redo.
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 ---
 
 ## Status at a glance
 
-- **Phases 0, 1, 2 complete.** Phases 3–7 ahead.
-- **7 commits ahead of `origin/master`.** Working tree clean. Unpushed by
-  user choice — not because anything is broken.
-- **61 tests passing**, ruff clean.
-- Local validation done end-to-end against hand-written status files
-  (`hangar-setup` → `agent-status` / `agent-mark-as-blocked` → `hangar-watch`
-  / `agent-list` / `hangar-statusline`).
+- **Phases 0, 1, 2, 3 complete.** Phases 4–7 ahead.
+- **90 tests passing**, ruff clean. Working tree had pending Phase 3 commits
+  at end of session — push status is whatever git says when you read this.
+- Local validation done end-to-end:
+  - Phases 1–2 against hand-written status files (`hangar-setup` →
+    `agent-status` / `agent-mark-as-blocked` → `hangar-watch` /
+    `agent-list` / `hangar-statusline`).
+  - Phase 3 against a temp `AGENT_CONTROL_HOME` smoke run: piped a fake
+    Claude statusline JSON through `hangar-quota-update`, saw the rendered
+    `hangar-watch` pane (5h + 7d bars, reset countdown, context line) and
+    the compact `5h:U%/E% 7d:U%/E%` in `hangar-statusline`. Also exercised
+    `scripts/claude-statusline` with and without `HANGAR_STATUSLINE_RENDERER`.
 
 ## How to pick up cold
 
@@ -43,8 +48,8 @@ All three should be silent-on-success. Then look at:
 | 0 — Skeleton | ✅ | (none — `pyproject`, package, tests/, CI) | 13 |
 | 1 — Status reporting | ✅ | `hangar-setup`, `agent-status`, `agent-mark-as-blocked`, `agent-list` | 38 |
 | 2 — Dashboard + cockpit | ✅ | `hangar-watch`, `hangar-checkin`, `hangar-statusline` | 61 |
-| 3 — Quota | ⏳ Next | `hangar-quota-update` (real impl), quota pane fills in | — |
-| 4 — `agent-spawn` non-interactive | ⏳ | worktrees, AGENTS.md, tmux window | — |
+| 3 — Quota | ✅ | `hangar-quota-update` (real), quota pane + compact fragment, `scripts/claude-statusline` | 90 |
+| 4 — `agent-spawn` non-interactive | ⏳ Next | worktrees, AGENTS.md, tmux window | — |
 | 5 — `agent-spawn` interactive + resume | ⏳ | curated picker, resume/suffix/abort | — |
 | 6 — `agent-jump` | ⏳ | `<slug>`/`blocked`/`feedback` | — |
 | 7 — Done signal + teardown | ⏳ | `agent-mark-done`, `agent-teardown` | — |
@@ -53,33 +58,88 @@ All three should be silent-on-success. Then look at:
 `agent-mark-as-blocked` (state + bell + tmux display-message). Implementation
 is essentially copy-paste in Phase 7.
 
-## Next: Phase 3 (Quota integration)
+## What Phase 3 shipped
 
-Spec is already nailed in `grilled-decisions.md` §4 and §11; just plumbing
-to wire it up.
+The plumbing landed roughly as planned — only one deviation from the
+session-start spec, called out at the bottom.
 
-1. `src/agent_hangar/quota.py`: replace the Phase-2 stubs (`render_pane` /
-   `render_compact`) with real readers of `~/.agent-control/quotas/claude.json`.
-   Compute burn-delta = `used_percentage - elapsed_percentage`. Color by
-   threshold (green ≤0, yellow ≤10, orange ≤25, red >25). Render the
-   two-line-per-window layout from §11.
-2. `cli.quota_update()`: read JSON from stdin, extract `rate_limits.five_hour`,
-   `rate_limits.seven_day`, `context_window.used_percentage`. Convert Unix
-   timestamp `resets_at` to ISO 8601 on write (§4 explicit correction:
-   field is `resets_at`, value is Unix int). Atomic-write
-   `~/.agent-control/quotas/claude.json`. Graceful on missing fields.
-3. `scripts/claude-statusline`: bash wrapper to drop into
-   `~/.claude/settings.json` `statusLine.command`. Pipes JSON to
-   `hangar-quota-update`, then renders the user's existing statusline
-   output unchanged.
-4. `dashboard.render_statusline()`: include the compact `5h:U%/E% 7d:U%/E%`
-   fragment once `quota.render_compact()` returns non-empty.
-5. Tests: mocked quota fixtures in `tests/fixtures/quota/` (the user's
-   real `~/.agent-control/` is never touched per existing convention).
+- `src/agent_hangar/quota.py` now exports `QuotaSnapshot`, `QuotaWindow`,
+  `load_snapshot`, `normalize_payload`, `write_snapshot`, `render_pane`,
+  `render_compact`. Snapshot shape on disk:
+  ```json
+  {
+    "updated_at": "...Z",
+    "context_window": { "used_percentage": <float> },
+    "five_hour": { "used_percentage": <float>, "resets_at": "...Z" },
+    "seven_day": { "used_percentage": <float>, "resets_at": "...Z" }
+  }
+  ```
+  Any of the three data keys may be absent; rendering degrades per-key.
+- `cli.quota_update()` reads stdin, runs `normalize_payload`, atomic-writes
+  via `quota.write_snapshot`. Empty stdin is a clean no-op. Invalid JSON
+  or non-object payloads exit 2 with a one-line error.
+- `scripts/claude-statusline` is the drop-in wrapper. Contract: read stdin
+  once, forward a copy to `hangar-quota-update` (best-effort, errors
+  swallowed), then call `$HANGAR_STATUSLINE_RENDERER` if set with the same
+  stdin. With no renderer set the wrapper still updates the snapshot but
+  prints nothing — Claude's statusline goes blank. Pointing
+  `HANGAR_STATUSLINE_RENDERER` at the user's existing
+  `~/.claude/statusline-command.sh` preserves their current statusline.
+- `ansi.ORANGE` added (256-color, `38;5;208`) to support the new burn-delta
+  scale. Burn thresholds match §11: green ≤0, yellow ≤10, orange ≤25, red >25.
 
-**Exit criterion (from ROADMAP):** Cockpit's quota pane updates whenever
-Claude Code is used; removing the statusline wrapper degrades the pane to
-`unavailable` without breaking the rest.
+### Deviation: env-var wrapper instead of in-place replacement
+
+Original spec said the wrapper "renders the user's existing statusline
+output unchanged." Two ways to do that: edit the user's
+`~/.claude/statusline-command.sh` in place (personal-machine wiring; see
+the no-personal-integrations memory), or compose by env-var pointer. We
+went with the env-var (`HANGAR_STATUSLINE_RENDERER`) so the shipped wrapper
+is generic and doesn't assume any particular renderer path. README still
+needs the snippet that tells users to add that env var + repoint
+`statusLine.command`; that's the only doc gap remaining for Phase 3.
+
+### Deferred sub-items (from the original Phase 3 todo list)
+
+- **"Stale beyond a threshold"** quota pane fallback: not built. The pane
+  shows whatever is on disk. Re-evaluate if a stuck snapshot ever misleads
+  more than it helps.
+- **`raw_available` for debugging**: dropped. The normalized snapshot is
+  small enough to read by eye; the raw payload would just double churn.
+
+## Next: Phase 4 (`agent-spawn` non-interactive)
+
+Spec lives in `ROADMAP.md` Phase 4 and `grilled-decisions.md` §3, §5, §6,
+§7, §9. Subtasks:
+
+1. **Slug validation / normalization.** Lowercase, hyphenate spaces,
+   strip invalid chars, collapse runs, trim. Refuse empty slug.
+2. **`workspace.py`** (already scaffolded, currently empty): compute the
+   workspace path `${AGENT_WORK_HOME}/<slug>`, refuse if it exists, mkdir,
+   prepare `.agent/` and the AGENTS.md/CLAUDE.md pair.
+3. **`spawn.py` / `cli.spawn`**: orchestrate per-repo `git fetch` + 
+   `git worktree add -b agent/<slug>/<repo> <workspace>/<repo> <base_branch>`.
+   Status starts `STARTING`. Run `bootstrap` per repo in the background
+   with stdout/stderr to `~/.agent-control/logs/<slug>-<repo>-bootstrap.log`.
+4. **Templates** (`src/agent_hangar/templates/`): AGENTS.md, HANDOFF.md,
+   prompt.md. Status-reporting rules, blocking rules, slug+workspace+repo
+   paths baked in via simple `{slug}`-style substitution (avoid jinja for
+   one extra dep).
+5. **Tmux window**: open a window named after the slug with the prompt
+   shown. Reuse `tmux.py` patterns from `hangar-checkin`.
+6. **Zero-repo case** (§9): workspace dir + tmux window + AGENTS.md, no
+   worktrees, no bootstrap. CLI-level confirmation for the foot-gun.
+7. **Tests**: heavy `subprocess.run` mocking (or a tmp git repo fixture
+   for the worktree paths). Keep the test footprint as integration-y as
+   we can without depending on a real network or a real tmux.
+
+`agent-list` and `hangar-watch` already do the right thing once `agent-spawn`
+populates status files, so no dashboard work for Phase 4.
+
+**Exit criterion (from ROADMAP):**
+`agent-spawn permissions-refactor backend frontend` creates the workspace,
+worktrees materialize, tmux window opens, prompt is visible, bootstrap
+finishes in the background, status transitions from `STARTING` onward.
 
 ## Design decisions to keep in mind (NOT re-litigate)
 
@@ -156,8 +216,11 @@ grilled-decisions per the README. Don't update them.
 
 ## Side items unresolved
 
-1. **7 unpushed commits.** User chose not to push yet. Push when ready
-   with `git push -u origin master`.
+1. **README still references Phase-3 statusline wiring loosely.** The
+   wrapper is shipped (`scripts/claude-statusline`) and the env-var
+   contract (`HANGAR_STATUSLINE_RENDERER`) is documented in the wrapper's
+   own header comment, but README doesn't yet have a paste-able snippet
+   for `~/.claude/settings.json`. Add when touching README next.
 2. **Cockpit `watch` dependency** is documented but not enforced; if
    `hangar-checkin` runs on a fresh macOS without `watch`, the cockpit
    window opens but its main pane errors out. Acceptable for now (the
