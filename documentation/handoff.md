@@ -125,22 +125,22 @@ stopped here" below.
   lowercase → spaces-to-hyphens → drop non-`[a-z0-9-]` → collapse
   hyphens → trim. Raises `WorkspaceError` on empty result.
 - `workspace.layout_for(slug)` — pure path computation: workspace dir,
-  `.agent/` dir, AGENTS.md/CLAUDE.md, HANDOFF.md, prompt.md,
-  metadata.env, status symlink path. Returns a frozen
-  `WorkspaceLayout` dataclass.
+  `.agent/` dir, AGENTS.md/CLAUDE.md, HANDOFF.md, metadata.env,
+  status symlink path. **No `prompt_md` field** — see resolved-decisions
+  below. Returns a frozen `WorkspaceLayout` dataclass.
 - `workspace.prepare_skeleton(slug, repos=..., now=...)` — creates
   workspace dir + `.agent/`, materializes templated AGENTS.md /
-  HANDOFF.md / prompt.md / metadata.env, makes the
+  HANDOFF.md / metadata.env, makes the
   `CLAUDE.md → AGENTS.md` symlink and the
   `.agent/status → ~/.agent-control/status/<slug>.status` symlink
   (target stays stable even if the status file doesn't exist yet).
   Refuses to clobber an existing workspace dir (Phase-5 resume flow
   will handle the prompt).
-- Templates at `src/agent_hangar/templates/{AGENTS,HANDOFF,prompt}.md.tmpl`,
+- Templates at `src/agent_hangar/templates/{AGENTS,HANDOFF}.md.tmpl`,
   registered in `pyproject.toml` package-data. Simple `{slug}` / 
   `{workspace_path}` / `{repos_inline}` / `{repos_bullets}` substitution
   — no jinja dep.
-- 21 new tests in `tests/test_workspace.py`. AGENT_WORK_HOME is
+- 21 tests in `tests/test_workspace.py`. AGENT_WORK_HOME is
   redirected at `tmp_path` via a `work_home` fixture, exactly like
   AGENT_CONTROL_HOME is in the existing pattern.
 
@@ -156,45 +156,67 @@ stopped here" below.
   visible, switch-to behavior).
 - Zero-repo confirmation prompt in the interactive flow.
 
-### Why stopped here
+### Resolved design decisions (2026-05-24)
 
-Three pieces of the not-done list want user judgment before code:
+The three flagged items from the initial Phase-4-foundation commit are
+now settled. **Do not relitigate** these in a future session — they
+are also in memory (`project-spawn-branch-policy`, `project-no-prompt-md`).
 
-1. **Template wording.** The first-cut text in
-   `templates/AGENTS.md.tmpl`, `HANDOFF.md.tmpl`, and `prompt.md.tmpl`
-   is a defensible v1 stab — status-reporting table, blocking rules,
-   git rules, handoff section headings from PRD §7.8. But the tone /
-   strictness / which examples to include is the kind of thing the
-   user usually wants to grill before it lives in every workspace.
-2. **Branch-naming default.** PRD says `agent/<slug>/<repo>`;
-   `grilled-decisions.md` §15 lists this as an open question to revisit.
-   Picking one now means the first real `agent-spawn` codifies it.
-3. **Prompt presentation in tmux.** The PRD says the spawn window
-   should "prepare the command and show the prompt" but doesn't say
-   exactly how — `cat .agent/prompt.md`, open in `$EDITOR`,
-   `tmux send-keys` with the prompt pre-typed but not Enter'd, or just
-   leave the window at a shell? Each has tradeoffs and the user has
-   strong taste here.
+1. **Templates accepted as-is**, minus `prompt.md`. The agent CLI opens
+   to an empty conversation; the operator's first message IS the task,
+   so a scaffold file would be friction. AGENTS.md and HANDOFF.md
+   stay; references to `prompt.md` were removed from both.
+2. **Branch naming is operator input**, not auto-derived. `agent-spawn`
+   will require a `--branch <name>` argument (or interactive prompt)
+   when the workspace has ≥1 repo. The same branch name is used across
+   every repo in the workspace. No `agent/<slug>/<repo>` namespacing.
+   Future feature (deferred): a hangar command to switch branches
+   across all worktrees in one step.
+3. **Tmux window presentation:** option C. `$AGENT_COMMAND` (default
+   `claude`) is pre-typed into the window but **not Enter'd**. Operator
+   hits Enter when ready and types the task in the first message.
 
-Building items 4-6 of the not-done list without those three resolved
-risks committing to choices the user will want to undo.
+### Pick-up plan (now actionable)
 
-### Pick-up plan (when ready)
+1. Wire `cli.spawn()` to:
+   a. Validate args: slug (required), `--branch` (required if repos passed),
+      repo positional args (optional; zero-repo planning workspace OK).
+   b. Confirm interactively when zero-repo (foot-gun avoidance, §9).
+   c. Call `workspace.normalize_slug` → `workspace.prepare_skeleton`.
+   d. Hand off to `spawn.create_worktrees` and `spawn.run_bootstraps`
+      for each selected repo.
+   e. Hand off to `tmux.create_workspace_window(layout)` to open the
+      window with `$AGENT_COMMAND` pre-typed.
+   f. Write the initial `agent-status … STARTING` row.
 
-1. Grill the three open items above (or accept the v1 stabs).
-2. Wire `cli.spawn()` to call `workspace.normalize_slug` →
-   `workspace.prepare_skeleton`. Confirm zero-repo case interactively.
-3. Add `spawn.py:create_worktrees(layout, repos_config)` — subprocess
-   `git fetch` + `git worktree add`. Test with a tmp git-repo fixture
-   in `tests/conftest.py`.
-4. Add `spawn.py:run_bootstraps(layout, repos_config)` — background
-   subprocesses, capture to log dir, write STARTING_FAILED if any
-   exited non-zero.
-5. Extend `tmux.py` with a `create_workspace_window(layout)` helper
-   that mirrors `open_checkin`'s shape.
-6. Wire all four together in `cli.spawn`. Write integration tests
-   that monkeypatch the subprocess calls but let `prepare_skeleton` do
-   its work for real.
+2. **`spawn.py:create_worktrees(layout, repos_config, branch)`** —
+   subprocess `git -C <canonical> fetch --prune`, then
+   `git -C <canonical> worktree add -b <branch> <workspace>/<repo> <base_branch>`.
+   The branch arg is the user-supplied name; the same name is used for
+   every repo. Tests via a tmp-git-repo fixture in `tests/conftest.py`.
+
+3. **`spawn.py:run_bootstraps(layout, repos_config)`** — background
+   `subprocess.Popen` of each repo's `bootstrap` command with cwd =
+   worktree path. Capture stdout/stderr to
+   `~/.agent-control/logs/<slug>-<repo>-bootstrap.log`. On non-zero
+   exit, write status STARTING_FAILED (per §5).
+
+4. **`tmux.py:create_workspace_window(layout)`** — mirror
+   `open_checkin`'s shape. New window named after the slug under the
+   `agents` session. `tmux send-keys -t <target> "<AGENT_COMMAND>"`
+   without trailing `Enter` so the command is queued, not run.
+   `tmux select-window` to switch to it.
+
+5. **`metadata.env`** gains a `BRANCH="<name>"` line (single value
+   across repos). Update `workspace._render_metadata` signature and
+   the existing skeleton tests when this lands — the skeleton itself
+   does not know the branch yet (the operator supplies it at spawn,
+   not at skeleton-prep time), so plumbing-wise the branch flows
+   `cli.spawn → spawn.create_worktrees → metadata.write_branch_field`
+   (or skeleton takes an optional `branch=` kwarg).
+
+6. Integration tests for `cli.spawn`: mock subprocess; let
+   `prepare_skeleton` and tmp-git-repo fixtures do real work.
 
 ### Exit criterion (unchanged, from ROADMAP)
 

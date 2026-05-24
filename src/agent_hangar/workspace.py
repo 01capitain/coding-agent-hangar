@@ -33,7 +33,12 @@ class WorkspaceError(Exception):
 
 @dataclass(frozen=True)
 class WorkspaceLayout:
-    """Resolved on-disk paths for one workspace."""
+    """Resolved on-disk paths for one workspace.
+
+    There is no ``prompt_md``: see ``project-no-prompt-md`` memory.
+    Operator opens the agent CLI into an empty conversation and types
+    the task in their first message.
+    """
 
     slug: str
     workspace_dir: Path
@@ -41,7 +46,6 @@ class WorkspaceLayout:
     agents_md: Path
     claude_md: Path
     handoff_md: Path
-    prompt_md: Path
     metadata_env: Path
     status_link: Path
 
@@ -86,7 +90,6 @@ def layout_for(slug: str) -> WorkspaceLayout:
         agents_md=workspace_dir / "AGENTS.md",
         claude_md=workspace_dir / "CLAUDE.md",
         handoff_md=agent_dir / "HANDOFF.md",
-        prompt_md=agent_dir / "prompt.md",
         metadata_env=agent_dir / "metadata.env",
         status_link=agent_dir / "status",
     )
@@ -133,10 +136,6 @@ def prepare_skeleton(
 
     layout.handoff_md.write_text(
         _render_template("HANDOFF.md.tmpl", slug=slug, repos=repos),
-        encoding="utf-8",
-    )
-    layout.prompt_md.write_text(
-        _render_template("prompt.md.tmpl", slug=slug, repos=repos),
         encoding="utf-8",
     )
     layout.metadata_env.write_text(

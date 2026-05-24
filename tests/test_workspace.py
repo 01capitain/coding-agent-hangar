@@ -67,9 +67,9 @@ def test_layout_resolves_paths_under_work_home(
     assert layout.agents_md == work / "alpha" / "AGENTS.md"
     assert layout.claude_md == work / "alpha" / "CLAUDE.md"
     assert layout.handoff_md == work / "alpha" / ".agent" / "HANDOFF.md"
-    assert layout.prompt_md == work / "alpha" / ".agent" / "prompt.md"
     assert layout.metadata_env == work / "alpha" / ".agent" / "metadata.env"
     assert layout.status_link == work / "alpha" / ".agent" / "status"
+    assert not hasattr(layout, "prompt_md")  # no prompt.md by design
 
 
 # ---------- prepare_skeleton ----------
@@ -98,8 +98,9 @@ def test_prepare_skeleton_creates_workspace_with_repos(
     assert layout.agent_dir.is_dir()
     assert layout.agents_md.is_file()
     assert layout.handoff_md.is_file()
-    assert layout.prompt_md.is_file()
     assert layout.metadata_env.is_file()
+    # By design: no prompt.md is created.
+    assert not (layout.agent_dir / "prompt.md").exists()
 
     # CLAUDE.md symlinks to AGENTS.md.
     assert layout.claude_md.is_symlink()
