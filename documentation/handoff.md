@@ -11,9 +11,13 @@ Last updated: 2026-05-24
 
 ## Status at a glance
 
-- **Phases 0, 1, 2, 3 complete.** Phases 4–7 ahead.
-- **90 tests passing**, ruff clean. Working tree had pending Phase 3 commits
-  at end of session — push status is whatever git says when you read this.
+- **Phases 0, 1, 2, 3 complete.** Phase 4 is *partially* built — the local
+  (FS-only) half lives as a library; the subprocess half (git worktree,
+  bootstrap, tmux window) is intentionally not started yet. See
+  "Phase 4 — what's done vs what's left" below.
+- **111 tests passing**, ruff clean. Working tree had pending Phase-3 and
+  Phase-4-foundation commits at end of session — push status is whatever
+  git says when you read this.
 - Local validation done end-to-end:
   - Phases 1–2 against hand-written status files (`hangar-setup` →
     `agent-status` / `agent-mark-as-blocked` → `hangar-watch` /
@@ -23,6 +27,8 @@ Last updated: 2026-05-24
     `hangar-watch` pane (5h + 7d bars, reset countdown, context line) and
     the compact `5h:U%/E% 7d:U%/E%` in `hangar-statusline`. Also exercised
     `scripts/claude-statusline` with and without `HANGAR_STATUSLINE_RENDERER`.
+  - Phase 4 foundation has unit tests but no live smoke yet — the CLI
+    entry point ``agent-spawn`` still stubs out, so users see no change.
 
 ## How to pick up cold
 
@@ -49,7 +55,7 @@ All three should be silent-on-success. Then look at:
 | 1 — Status reporting | ✅ | `hangar-setup`, `agent-status`, `agent-mark-as-blocked`, `agent-list` | 38 |
 | 2 — Dashboard + cockpit | ✅ | `hangar-watch`, `hangar-checkin`, `hangar-statusline` | 61 |
 | 3 — Quota | ✅ | `hangar-quota-update` (real), quota pane + compact fragment, `scripts/claude-statusline` | 90 |
-| 4 — `agent-spawn` non-interactive | ⏳ Next | worktrees, AGENTS.md, tmux window | — |
+| 4 — `agent-spawn` non-interactive | 🟡 Foundation only | `workspace.normalize_slug`, `workspace.prepare_skeleton`, templates | 111 |
 | 5 — `agent-spawn` interactive + resume | ⏳ | curated picker, resume/suffix/abort | — |
 | 6 — `agent-jump` | ⏳ | `<slug>`/`blocked`/`feedback` | — |
 | 7 — Done signal + teardown | ⏳ | `agent-mark-done`, `agent-teardown` | — |
@@ -107,39 +113,95 @@ needs the snippet that tells users to add that env var + repoint
 - **`raw_available` for debugging**: dropped. The normalized snapshot is
   small enough to read by eye; the raw payload would just double churn.
 
-## Next: Phase 4 (`agent-spawn` non-interactive)
+## Phase 4 — what's done vs what's left
 
-Spec lives in `ROADMAP.md` Phase 4 and `grilled-decisions.md` §3, §5, §6,
-§7, §9. Subtasks:
+The local, FS-only foundation landed in this session. The subprocess
+half (git, bootstrap, tmux) was deliberately not started — see "Why
+stopped here" below.
 
-1. **Slug validation / normalization.** Lowercase, hyphenate spaces,
-   strip invalid chars, collapse runs, trim. Refuse empty slug.
-2. **`workspace.py`** (already scaffolded, currently empty): compute the
-   workspace path `${AGENT_WORK_HOME}/<slug>`, refuse if it exists, mkdir,
-   prepare `.agent/` and the AGENTS.md/CLAUDE.md pair.
-3. **`spawn.py` / `cli.spawn`**: orchestrate per-repo `git fetch` + 
-   `git worktree add -b agent/<slug>/<repo> <workspace>/<repo> <base_branch>`.
-   Status starts `STARTING`. Run `bootstrap` per repo in the background
-   with stdout/stderr to `~/.agent-control/logs/<slug>-<repo>-bootstrap.log`.
-4. **Templates** (`src/agent_hangar/templates/`): AGENTS.md, HANDOFF.md,
-   prompt.md. Status-reporting rules, blocking rules, slug+workspace+repo
-   paths baked in via simple `{slug}`-style substitution (avoid jinja for
-   one extra dep).
-5. **Tmux window**: open a window named after the slug with the prompt
-   shown. Reuse `tmux.py` patterns from `hangar-checkin`.
-6. **Zero-repo case** (§9): workspace dir + tmux window + AGENTS.md, no
-   worktrees, no bootstrap. CLI-level confirmation for the foot-gun.
-7. **Tests**: heavy `subprocess.run` mocking (or a tmp git repo fixture
-   for the worktree paths). Keep the test footprint as integration-y as
-   we can without depending on a real network or a real tmux.
+### Done (foundation, library-only)
 
-`agent-list` and `hangar-watch` already do the right thing once `agent-spawn`
-populates status files, so no dashboard work for Phase 4.
+- `workspace.normalize_slug(raw)` — implements PRD §7.3 exactly:
+  lowercase → spaces-to-hyphens → drop non-`[a-z0-9-]` → collapse
+  hyphens → trim. Raises `WorkspaceError` on empty result.
+- `workspace.layout_for(slug)` — pure path computation: workspace dir,
+  `.agent/` dir, AGENTS.md/CLAUDE.md, HANDOFF.md, prompt.md,
+  metadata.env, status symlink path. Returns a frozen
+  `WorkspaceLayout` dataclass.
+- `workspace.prepare_skeleton(slug, repos=..., now=...)` — creates
+  workspace dir + `.agent/`, materializes templated AGENTS.md /
+  HANDOFF.md / prompt.md / metadata.env, makes the
+  `CLAUDE.md → AGENTS.md` symlink and the
+  `.agent/status → ~/.agent-control/status/<slug>.status` symlink
+  (target stays stable even if the status file doesn't exist yet).
+  Refuses to clobber an existing workspace dir (Phase-5 resume flow
+  will handle the prompt).
+- Templates at `src/agent_hangar/templates/{AGENTS,HANDOFF,prompt}.md.tmpl`,
+  registered in `pyproject.toml` package-data. Simple `{slug}` / 
+  `{workspace_path}` / `{repos_inline}` / `{repos_bullets}` substitution
+  — no jinja dep.
+- 21 new tests in `tests/test_workspace.py`. AGENT_WORK_HOME is
+  redirected at `tmp_path` via a `work_home` fixture, exactly like
+  AGENT_CONTROL_HOME is in the existing pattern.
 
-**Exit criterion (from ROADMAP):**
-`agent-spawn permissions-refactor backend frontend` creates the workspace,
-worktrees materialize, tmux window opens, prompt is visible, bootstrap
-finishes in the background, status transitions from `STARTING` onward.
+### Not done
+
+- `spawn.py` / `cli.spawn` — still stubs. The visible `agent-spawn`
+  command still prints "not implemented yet" and exits 1.
+- Per-repo `git fetch` + `git worktree add -b agent/<slug>/<repo>` driver.
+- Bootstrap subprocess management (background `npm ci` etc., output
+  captured to `~/.agent-control/logs/<slug>-<repo>-bootstrap.log`,
+  STARTING_FAILED on non-zero exit).
+- Tmux window creation for the workspace (named after the slug, prompt
+  visible, switch-to behavior).
+- Zero-repo confirmation prompt in the interactive flow.
+
+### Why stopped here
+
+Three pieces of the not-done list want user judgment before code:
+
+1. **Template wording.** The first-cut text in
+   `templates/AGENTS.md.tmpl`, `HANDOFF.md.tmpl`, and `prompt.md.tmpl`
+   is a defensible v1 stab — status-reporting table, blocking rules,
+   git rules, handoff section headings from PRD §7.8. But the tone /
+   strictness / which examples to include is the kind of thing the
+   user usually wants to grill before it lives in every workspace.
+2. **Branch-naming default.** PRD says `agent/<slug>/<repo>`;
+   `grilled-decisions.md` §15 lists this as an open question to revisit.
+   Picking one now means the first real `agent-spawn` codifies it.
+3. **Prompt presentation in tmux.** The PRD says the spawn window
+   should "prepare the command and show the prompt" but doesn't say
+   exactly how — `cat .agent/prompt.md`, open in `$EDITOR`,
+   `tmux send-keys` with the prompt pre-typed but not Enter'd, or just
+   leave the window at a shell? Each has tradeoffs and the user has
+   strong taste here.
+
+Building items 4-6 of the not-done list without those three resolved
+risks committing to choices the user will want to undo.
+
+### Pick-up plan (when ready)
+
+1. Grill the three open items above (or accept the v1 stabs).
+2. Wire `cli.spawn()` to call `workspace.normalize_slug` →
+   `workspace.prepare_skeleton`. Confirm zero-repo case interactively.
+3. Add `spawn.py:create_worktrees(layout, repos_config)` — subprocess
+   `git fetch` + `git worktree add`. Test with a tmp git-repo fixture
+   in `tests/conftest.py`.
+4. Add `spawn.py:run_bootstraps(layout, repos_config)` — background
+   subprocesses, capture to log dir, write STARTING_FAILED if any
+   exited non-zero.
+5. Extend `tmux.py` with a `create_workspace_window(layout)` helper
+   that mirrors `open_checkin`'s shape.
+6. Wire all four together in `cli.spawn`. Write integration tests
+   that monkeypatch the subprocess calls but let `prepare_skeleton` do
+   its work for real.
+
+### Exit criterion (unchanged, from ROADMAP)
+
+`agent-spawn permissions-refactor backend frontend` creates the
+workspace, worktrees materialize, tmux window opens, prompt is visible,
+bootstrap finishes in the background, status transitions from
+`STARTING` onward.
 
 ## Design decisions to keep in mind (NOT re-litigate)
 

@@ -1,0 +1,70 @@
+# Workspace: {slug}
+
+You are the agent for the **{slug}** workspace. Read this file at the start
+of every session before doing any work.
+
+## Workspace layout
+
+- **Workspace root:** `{workspace_path}`
+- **Repositories:** {repos_inline}
+- **tmux:** session `{tmux_session}`, window `{tmux_window}`
+- **Status file:** `{status_path}`
+
+Each repo (when present) is a git worktree under `{workspace_path}/<repo>`
+on branch `agent/{slug}/<repo>`. The canonical repos live elsewhere; do
+**not** push from the worktree — open a PR with the user's tooling instead.
+
+## Reporting status (REQUIRED)
+
+You report status by calling these CLI commands from inside the tmux window.
+They write atomically to the shared dashboard. Skipping them makes the
+operator's cockpit blind to your progress.
+
+| When | Run |
+|---|---|
+| Starting a turn after reading the prompt | `agent-status {slug} WORKING "<one-line summary>"` |
+| You need a user decision but are not fully blocked | `agent-status {slug} NEEDS_FEEDBACK "<the question>"` |
+| You cannot proceed without input or access | `agent-mark-as-blocked {slug} "<what is blocking>"` |
+| You believe the task is ready for review | `agent-status {slug} READY "<what you did>"` |
+| You finished the task | `agent-mark-done {slug} "<summary>"` |
+| You hit an unrecoverable issue | `agent-status {slug} FAILED "<what failed>"` |
+
+Bump `WORKING` summaries whenever you switch to a substantively different
+activity ("running tests", "investigating null check", "drafting PR
+description"). The cockpit flags `WORKING` rows that haven't moved in 30
+minutes as `[stale]`.
+
+## Blocking rules
+
+Use `agent-mark-as-blocked` (which rings the operator's bell) for hard
+blocks only:
+
+- a decision you can't make without the user (policy, naming, semantics);
+- missing access (token, env, service);
+- broken or contradictory instructions in the prompt.
+
+Use `agent-status … NEEDS_FEEDBACK` for softer asks that can wait a few
+minutes — design questions, "is this approach OK?", code-review-style
+checkpoints. NEEDS_FEEDBACK does NOT ring the bell.
+
+## Git rules
+
+- Work happens in the worktree on `agent/{slug}/<repo>`. Never check out
+  another branch in the worktree.
+- Commit often with descriptive messages; do NOT amend pushed commits.
+- Do not force-push, rebase shared history, or merge to base branch
+  yourself.
+- If your work is ready for a PR, mention it in the summary; the user
+  opens the PR.
+
+## Handoff and prompt
+
+- `{workspace_path}/.agent/prompt.md` is your initial task. Treat it as
+  the authoritative description of what to do.
+- `{workspace_path}/.agent/HANDOFF.md` is the running record you maintain
+  for the operator. Update its sections as work progresses; the operator
+  reads it when picking the work up after a break.
+
+## Repositories in this workspace
+
+{repos_bullets}

@@ -42,7 +42,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-agent_hangar = ["templates/*.yaml", "templates/*.md"]
+agent_hangar = ["templates/*.yaml", "templates/*.md", "templates/*.tmpl"]
 
 [tool.ruff]
 line-length = 100
