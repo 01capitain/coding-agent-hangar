@@ -95,12 +95,12 @@ Deferred from this phase (live in Phase 5 / later):
 
 Make spawning ergonomic.
 
-- [ ] `agent-spawn` with no args — prompt for slug, show the curated repo list sorted by `default: true` hint with **nothing pre-checked**, accept multi-select input, confirm summary, then run the non-interactive path.
-- [ ] Resume prompt when slug exists: **resume** (reattach window, preserve files, no bootstrap) / **suffix** (`<slug>-2`) / **abort**.
-- [ ] Slug normalization (lowercase, hyphenate, strip invalid chars, collapse, trim).
-- [ ] Branch existence check before `git worktree add`; clear error if it would collide.
+- [x] `agent-spawn` with no args — prompts for slug, shows the curated repo list sorted by `default: true` hint with **nothing pre-checked**, accepts comma-separated multi-select, then prompts for branch when any repo is selected. Re-prompts on invalid picker input.
+- [x] Resume prompt when slug exists: **resume** (reattach window, preserve files, no bootstrap) / **suffix** (`<slug>-2`, `-3`, …) / **abort**. Non-interactive callers pick the same behavior with `--resume` / `--suffix`; bare collision keeps erroring with a message that points at both flags.
+- [x] Slug normalization warning — when the raw slug doesn't equal the normalized form, print `slug normalized to '<x>'` on stderr so the operator sees the name that will be used.
+- [x] Branch existence check before `git worktree add`. Non-interactive: hard error naming the colliding repo. Interactive: per-repo prompt offering reuse of the existing branch (no `-b`); declining aborts.
 
-**Exit criterion:** A new user can run `agent-spawn`, answer two prompts, and end up in a working workspace.
+**Exit criterion:** A new user can run `agent-spawn`, answer two prompts, and end up in a working workspace. ✓ (163 tests passing; smoke-validated 2026-05-24.)
 
 ---
 

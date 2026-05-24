@@ -60,6 +60,7 @@ def create_worktrees(
     repos: list[Repo],
     branch: str,
     *,
+    reuse_in: set[str] | frozenset[str] = frozenset(),
     runner: CommandRunner | None = None,
 ) -> list[Path]:
     """Fetch each canonical repo and create a worktree for it.
@@ -68,6 +69,12 @@ def create_worktrees(
     branch name (same across every repo per the spawn-branch policy).
     Raises :class:`SpawnError` on the first git failure — we don't try to
     half-spawn.
+
+    ``reuse_in`` is the set of repo keys whose branch already exists in
+    the canonical and should be checked out without ``-b``. Populated by
+    the interactive Phase-5 prompt that offers to reuse a colliding
+    branch; in the non-interactive path callers leave it empty and rely
+    on :func:`check_branch_collisions` to fail fast before getting here.
     """
     if not branch:
         raise SpawnError("branch name is required when creating worktrees")
@@ -88,17 +95,17 @@ def create_worktrees(
             )
 
         worktree_dir = layout.workspace_dir / repo.name
-        add = run([
-            "git",
-            "-C",
-            str(repo.path),
-            "worktree",
-            "add",
-            "-b",
-            branch,
-            str(worktree_dir),
-            repo.base_branch,
-        ])
+        if repo.key in reuse_in:
+            add_args = [
+                "git", "-C", str(repo.path),
+                "worktree", "add", str(worktree_dir), branch,
+            ]
+        else:
+            add_args = [
+                "git", "-C", str(repo.path),
+                "worktree", "add", "-b", branch, str(worktree_dir), repo.base_branch,
+            ]
+        add = run(add_args)
         if add.returncode != 0:
             raise SpawnError(
                 f"git worktree add failed for {repo.key!r}: "
@@ -107,6 +114,41 @@ def create_worktrees(
         worktrees.append(worktree_dir)
 
     return worktrees
+
+
+def branch_exists_in_canonical(
+    repo: Repo,
+    branch: str,
+    *,
+    runner: CommandRunner | None = None,
+) -> bool:
+    """True if ``branch`` already exists as a local ref in ``repo``.
+
+    Uses ``git show-ref --verify --quiet refs/heads/<branch>`` so an exit
+    code of 0 means the ref exists and 1 means it doesn't. A missing
+    canonical path raises :class:`SpawnError` — Phase-4-style fail-fast,
+    same shape as ``create_worktrees``.
+    """
+    if not repo.path.exists():
+        raise SpawnError(
+            f"canonical repo path missing for {repo.key!r}: {repo.path}"
+        )
+    run = runner or _default_runner
+    result = run([
+        "git", "-C", str(repo.path),
+        "show-ref", "--verify", "--quiet", f"refs/heads/{branch}",
+    ])
+    return result.returncode == 0
+
+
+def check_branch_collisions(
+    repos: list[Repo],
+    branch: str,
+    *,
+    runner: CommandRunner | None = None,
+) -> list[Repo]:
+    """Return the subset of ``repos`` where ``branch`` already exists."""
+    return [r for r in repos if branch_exists_in_canonical(r, branch, runner=runner)]
 
 
 # ---------- background bootstraps ----------

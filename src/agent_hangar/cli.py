@@ -71,11 +71,14 @@ def spawn() -> None:
         prog="agent-spawn",
         description=(
             "Create a workspace (tmux window, worktrees, AGENTS.md). "
-            "Phase 4 ships the non-interactive form; resume/suffix/abort "
-            "and interactive prompts arrive in Phase 5."
+            "Omit `slug` for interactive prompts."
         ),
     )
-    parser.add_argument("slug", help="Workspace slug. Required.")
+    parser.add_argument(
+        "slug",
+        nargs="?",
+        help="Workspace slug. Omit for interactive mode.",
+    )
     parser.add_argument(
         "repos",
         nargs="*",
@@ -94,6 +97,22 @@ def spawn() -> None:
         action="store_true",
         help="Skip the zero-repo confirmation prompt.",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Reattach to an existing workspace for this slug instead of "
+            "erroring. Cannot be combined with repos or --branch."
+        ),
+    )
+    parser.add_argument(
+        "--suffix",
+        action="store_true",
+        help=(
+            "If a workspace at `slug` already exists, create the next free "
+            "<slug>-N instead of erroring."
+        ),
+    )
     args = parser.parse_args()
 
     if not config.status_dir().is_dir():
@@ -103,10 +122,63 @@ def spawn() -> None:
         )
         sys.exit(_USER_ERROR_EXIT)
 
-    try:
-        slug = workspace_mod.normalize_slug(args.slug)
-    except workspace_mod.WorkspaceError as exc:
-        print(f"agent-spawn: {exc}", file=sys.stderr)
+    if args.resume and args.suffix:
+        print(
+            "agent-spawn: --resume and --suffix are mutually exclusive.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    if args.slug is None:
+        if args.repos or args.branch or args.resume or args.suffix or args.yes:
+            print(
+                "agent-spawn: positional/--branch/--resume/--suffix/--yes "
+                "require an explicit slug. Re-run with `agent-spawn <slug> ...` "
+                "or `agent-spawn` alone for the interactive flow.",
+                file=sys.stderr,
+            )
+            sys.exit(_USER_ERROR_EXIT)
+        _spawn_interactive()
+        return
+
+    _spawn_non_interactive(args)
+
+
+# ---------- non-interactive path ----------
+
+
+def _spawn_non_interactive(args: argparse.Namespace) -> None:
+    if args.resume and (args.repos or args.branch):
+        print(
+            "agent-spawn: --resume cannot be combined with repos or --branch.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    slug = _normalize_with_warning(args.slug)
+
+    layout = workspace_mod.layout_for(slug)
+    if layout.workspace_dir.exists():
+        if args.resume:
+            _reattach_workspace(slug, layout)
+            return
+        if args.suffix:
+            slug = workspace_mod.next_available_slug(slug)
+            layout = workspace_mod.layout_for(slug)
+            print(f"agent-spawn: existing workspace; using suffixed slug '{slug}'.")
+        else:
+            suggested = workspace_mod.next_available_slug(slug)
+            print(
+                f"agent-spawn: workspace already exists at {layout.workspace_dir}. "
+                f"Pass --resume to reattach or --suffix to create '{suggested}'.",
+                file=sys.stderr,
+            )
+            sys.exit(_USER_ERROR_EXIT)
+    elif args.resume:
+        print(
+            f"agent-spawn: --resume given but no workspace exists at {layout.workspace_dir}.",
+            file=sys.stderr,
+        )
         sys.exit(_USER_ERROR_EXIT)
 
     selected_repos = _resolve_repos(args.repos)
@@ -118,6 +190,22 @@ def spawn() -> None:
         )
         sys.exit(_USER_ERROR_EXIT)
 
+    if selected_repos:
+        try:
+            collisions = spawn_mod.check_branch_collisions(selected_repos, args.branch)
+        except spawn_mod.SpawnError as exc:
+            print(f"agent-spawn: {exc}", file=sys.stderr)
+            sys.exit(_USER_ERROR_EXIT)
+        if collisions:
+            names = ", ".join(r.key for r in collisions)
+            print(
+                f"agent-spawn: branch {args.branch!r} already exists in {names}. "
+                "Pick a different --branch or delete the existing ref first "
+                "(interactive mode offers reuse).",
+                file=sys.stderr,
+            )
+            sys.exit(_USER_ERROR_EXIT)
+
     if not selected_repos and not args.yes:
         confirmed = _confirm(
             f"Create zero-repo planning workspace for slug {slug!r}? [y/N] "
@@ -126,11 +214,174 @@ def spawn() -> None:
             print("agent-spawn: aborted by user.")
             sys.exit(0)
 
+    _finalize_spawn(slug, selected_repos, branch=args.branch, reuse_in=frozenset())
+
+
+# ---------- interactive path ----------
+
+
+def _spawn_interactive() -> None:
+    try:
+        all_repos = repos_mod.load_repos()
+    except repos_mod.RepoConfigError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    slug = _prompt_for_slug()
+    layout = workspace_mod.layout_for(slug)
+
+    if layout.workspace_dir.exists():
+        choice = _prompt_resume_suffix_abort(slug)
+        if choice == "abort":
+            print("agent-spawn: aborted by user.")
+            sys.exit(0)
+        if choice == "resume":
+            _reattach_workspace(slug, layout)
+            return
+        if choice == "suffix":
+            slug = workspace_mod.next_available_slug(slug)
+            print(f"agent-spawn: using suffixed slug '{slug}'.")
+
+    selected_repos = _prompt_for_repos(all_repos)
+
+    branch: str | None = None
+    reuse_in: set[str] = set()
+    if selected_repos:
+        branch = _prompt_for_branch()
+        try:
+            collisions = spawn_mod.check_branch_collisions(selected_repos, branch)
+        except spawn_mod.SpawnError as exc:
+            print(f"agent-spawn: {exc}", file=sys.stderr)
+            sys.exit(_USER_ERROR_EXIT)
+        for repo in collisions:
+            reuse = _confirm(
+                f"Branch {branch!r} already exists in {repo.key}. "
+                "Reuse the existing branch (no new branch created)? [y/N] "
+            )
+            if not reuse:
+                print(
+                    f"agent-spawn: aborted — branch {branch!r} exists in {repo.key} "
+                    "and reuse was declined.",
+                    file=sys.stderr,
+                )
+                sys.exit(_USER_ERROR_EXIT)
+            reuse_in.add(repo.key)
+    else:
+        confirmed = _confirm(
+            f"Create zero-repo planning workspace for slug {slug!r}? [y/N] "
+        )
+        if not confirmed:
+            print("agent-spawn: aborted by user.")
+            sys.exit(0)
+
+    _finalize_spawn(
+        slug, selected_repos, branch=branch, reuse_in=frozenset(reuse_in)
+    )
+
+
+def _prompt_for_slug() -> str:
+    raw = _input_required("Workspace slug: ", missing_message="slug is required")
+    try:
+        return _normalize_with_warning(raw)
+    except SystemExit:
+        raise
+    except workspace_mod.WorkspaceError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+
+def _prompt_resume_suffix_abort(slug: str) -> str:
+    layout = workspace_mod.layout_for(slug)
+    suggested_suffix = workspace_mod.next_available_slug(slug)
+    print(
+        f"Workspace for {slug!r} already exists at {layout.workspace_dir}."
+    )
+    while True:
+        try:
+            answer = input(
+                f"  [r]esume / [s]uffix as {suggested_suffix!r} / [a]bort: "
+            ).strip().lower()
+        except EOFError:
+            return "abort"
+        if answer in {"r", "resume"}:
+            return "resume"
+        if answer in {"s", "suffix"}:
+            return "suffix"
+        if answer in {"", "a", "abort"}:
+            return "abort"
+        print("  (expected r / s / a)")
+
+
+def _prompt_for_repos(all_repos: list[repos_mod.Repo]) -> list[repos_mod.Repo]:
+    if not all_repos:
+        print("agent-spawn: repos.yaml has no entries — creating a zero-repo workspace.")
+        return []
+    ordered = sorted(all_repos, key=lambda r: (not r.default, r.key))
+    print("Repos (nothing pre-selected; * = default hint):")
+    for i, repo in enumerate(ordered, start=1):
+        marker = "*" if repo.default else " "
+        print(f"  {marker} {i:>2}. {repo.key:<24} {repo.name}")
+    while True:
+        try:
+            raw = input(
+                "Select by number (comma-separated, blank or 'none' for zero-repo): "
+            ).strip()
+        except EOFError:
+            return []
+        if raw == "" or raw.lower() == "none":
+            return []
+        picks: list[repos_mod.Repo] = []
+        try:
+            for token in raw.split(","):
+                token = token.strip()
+                if not token:
+                    continue
+                idx = int(token)
+                if idx < 1 or idx > len(ordered):
+                    raise ValueError(f"out of range: {idx}")
+                repo = ordered[idx - 1]
+                if repo not in picks:
+                    picks.append(repo)
+        except ValueError as exc:
+            print(f"  (invalid selection: {exc} — try again)")
+            continue
+        return picks
+
+
+def _prompt_for_branch() -> str:
+    return _input_required(
+        "Branch name (same across every repo): ",
+        missing_message="branch is required when repos are selected",
+    )
+
+
+def _input_required(prompt: str, *, missing_message: str) -> str:
+    try:
+        value = input(prompt).strip()
+    except EOFError:
+        print(f"agent-spawn: {missing_message}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+    if not value:
+        print(f"agent-spawn: {missing_message}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+    return value
+
+
+# ---------- shared helpers ----------
+
+
+def _finalize_spawn(
+    slug: str,
+    selected_repos: list,
+    *,
+    branch: str | None,
+    reuse_in: frozenset[str],
+) -> None:
     try:
         layout = workspace_mod.prepare_skeleton(
             slug,
             repos=[r.name for r in selected_repos],
-            branch=args.branch,
+            branch=branch,
         )
     except workspace_mod.WorkspaceError as exc:
         print(f"agent-spawn: {exc}", file=sys.stderr)
@@ -138,7 +389,9 @@ def spawn() -> None:
 
     try:
         if selected_repos:
-            spawn_mod.create_worktrees(layout, selected_repos, branch=args.branch)
+            spawn_mod.create_worktrees(
+                layout, selected_repos, branch=branch, reuse_in=reuse_in
+            )
             spawn_mod.run_bootstraps(layout, selected_repos)
     except spawn_mod.SpawnError as exc:
         print(f"agent-spawn: {exc}", file=sys.stderr)
@@ -164,11 +417,32 @@ def spawn() -> None:
         )
         print(f"agent-spawn: {tmux_summary}")
     except tmux_mod.TmuxError as exc:
-        # The workspace is on disk and status is STARTING — the spawn
-        # succeeded in every way except the tmux flourish. Print the
-        # error but don't blow up the exit code, the user can open the
-        # window manually.
         print(f"agent-spawn: tmux step skipped ({exc})", file=sys.stderr)
+
+
+def _reattach_workspace(slug: str, layout) -> None:
+    print(f"[{slug}] resuming workspace at {layout.workspace_dir}")
+    try:
+        tmux_summary = tmux_mod.open_workspace_window(
+            slug, cwd=str(layout.workspace_dir)
+        )
+        print(f"agent-spawn: {tmux_summary}")
+    except tmux_mod.TmuxError as exc:
+        print(f"agent-spawn: tmux step skipped ({exc})", file=sys.stderr)
+
+
+def _normalize_with_warning(raw: str) -> str:
+    try:
+        normalized = workspace_mod.normalize_slug(raw)
+    except workspace_mod.WorkspaceError as exc:
+        print(f"agent-spawn: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+    if normalized != raw:
+        print(
+            f"agent-spawn: slug normalized to '{normalized}' (from {raw!r}).",
+            file=sys.stderr,
+        )
+    return normalized
 
 
 def _resolve_repos(repo_keys: list[str]) -> list:

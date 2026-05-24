@@ -11,9 +11,9 @@ Last updated: 2026-05-24
 
 ## Status at a glance
 
-- **Phases 0, 1, 2, 3, 4 complete.** Phases 5–7 ahead.
-- **136 tests passing**, ruff clean. Working tree had multiple Phase-3 /
-  Phase-4 commits at end of session — push status is whatever git says
+- **Phases 0, 1, 2, 3, 4, 5 complete.** Phases 6–7 ahead.
+- **163 tests passing**, ruff clean. Working tree had Phase-5 changes
+  uncommitted at end of session — push status is whatever git says
   when you read this.
 - Local validation done end-to-end:
   - Phases 1–2 against hand-written status files (`hangar-setup` →
@@ -59,8 +59,8 @@ All three should be silent-on-success. Then look at:
 | 2 — Dashboard + cockpit | ✅ | `hangar-watch`, `hangar-checkin`, `hangar-statusline` | 61 |
 | 3 — Quota | ✅ | `hangar-quota-update` (real), quota pane + compact fragment, `scripts/claude-statusline` | 90 |
 | 4 — `agent-spawn` non-interactive | ✅ | `agent-spawn <slug> [repos...] --branch <name>` + scaffolding + worktree + background bootstrap + tmux window | 136 |
-| 5 — `agent-spawn` interactive + resume | ⏳ Next | curated picker, resume/suffix/abort | — |
-| 6 — `agent-jump` | ⏳ | `<slug>`/`blocked`/`feedback` | — |
+| 5 — `agent-spawn` interactive + resume | ✅ | bare `agent-spawn` prompts; `--resume` / `--suffix`; slug normalize warning; branch-collision pre-check (interactive reuse) | 163 |
+| 6 — `agent-jump` | ⏳ Next | `<slug>`/`blocked`/`feedback` | — |
 | 7 — Done signal + teardown | ⏳ | `agent-mark-done`, `agent-teardown` | — |
 
 `agent-mark-done` is a stub but its shape is fully decided: it mirrors
@@ -195,32 +195,97 @@ Built a tmp git canonical + tmp control + tmp work home; ran
   prints the success message BEFORE the tmux call so users always see
   `[real-feature] STARTING at <path>` even if attach fails.
 
-## Next: Phase 5 (interactive `agent-spawn` + resume)
+## Phase 5 — what shipped
 
-Spec lives in `ROADMAP.md` Phase 5. Concrete subtasks:
+All four subtasks from the original Phase-5 plan are now on disk and
+covered by tests.
 
-1. **Interactive flow when args omitted.** `agent-spawn` (no args) should:
-   prompt for slug, prompt for branch (required if any repos selected),
-   show a multi-select repo picker sorted by `default: true` first, no
-   pre-checks. Use `input()` and a simple text picker — fzf is Post-MVP
-   (`grilled-decisions.md` §15 / ROADMAP).
-2. **Resume / suffix / abort on existing slug.** Today the non-interactive
-   path errors with "workspace directory already exists" (see
-   `workspace.prepare_skeleton`). Replace that error with a prompt:
-   resume (reuse existing dir + reopen tmux window + don't re-bootstrap)
-   / suffix (`<slug>-2`, `<slug>-3`, …) / abort. Non-interactive
-   `agent-spawn` keeps erroring unless `--resume` / `--suffix` is passed
-   explicitly — interactive mode is when prompts make sense.
-3. **Branch existence check** before `git worktree add` to give a clear
-   error if the branch already exists in any selected canonical (would
-   collide with `-b <branch>`). Bonus: offer to use existing branch
-   without `-b` if the user confirms.
-4. **Slug normalization warning.** When the user-supplied raw slug
-   doesn't equal the normalized form, print "normalized to '<x>'" so
-   they see what name will be used.
+### CLI surface
 
-Tests follow the Phase-4 pattern: drive `input()` via `io.StringIO`,
-keep the tmp-git-repo fixture for the worktree work.
+```
+agent-spawn                                 # full interactive flow
+agent-spawn <slug> [repos...] --branch <n>  # Phase-4 path, unchanged
+agent-spawn <slug> --resume                 # reattach existing workspace
+agent-spawn <slug> [repos...] --branch <n> --suffix   # use <slug>-N on collision
+```
+
+`--resume` and `--suffix` are mutually exclusive. `--resume` cannot
+combine with repos or `--branch` — those make no sense when reattaching.
+Without either flag, an existing workspace still hard-errors, but the
+message now names both flags so the operator sees the way forward:
+
+```
+agent-spawn: workspace already exists at /Users/.../agent-work/alpha.
+Pass --resume to reattach or --suffix to create 'alpha-2'.
+```
+
+### Modules touched
+
+- `workspace.py` — new `next_available_slug(slug)` walks `<slug>-2`,
+  `-3`, … and returns the first free name. Pure path probing, no FS
+  writes.
+- `spawn.py` — `branch_exists_in_canonical(repo, branch)` shells
+  `git show-ref --verify --quiet refs/heads/<b>`; `check_branch_collisions`
+  is the list-comprehension wrapper. `create_worktrees` grew a
+  `reuse_in: set[str]` kwarg; for repos in that set the worktree-add
+  call drops `-b` and checks out the existing branch instead.
+- `cli.py` — `spawn()` makes `slug` optional. With no slug, dispatches
+  to `_spawn_interactive` (prompt slug → resume/suffix/abort on
+  collision → numbered repo picker sorted default-first → branch prompt
+  → per-repo collision reuse confirm → finalize). With a slug,
+  dispatches to `_spawn_non_interactive` (same flow as Phase 4 plus the
+  `--resume` / `--suffix` branches and a hard-error collision check
+  that points at the interactive reuse path). Slug normalization runs
+  through `_normalize_with_warning` so any divergence from the raw input
+  is printed once on stderr.
+
+### Picker UX
+
+```
+Repos (nothing pre-selected; * = default hint):
+  *  1. backend                  backend-core-nestjs
+     2. frontend                 frontend-web
+Select by number (comma-separated, blank or 'none' for zero-repo):
+```
+
+Comma-separated indices; blank or `none` produces a zero-repo workspace
+(with the same y/N confirm as the non-interactive zero-repo case).
+Re-prompts on out-of-range / non-numeric input rather than erroring.
+
+### Tests
+
+163 total. New in Phase 5 (27 new):
+
+- `tests/test_workspace.py` — three `next_available_slug` cases.
+- `tests/test_spawn.py` — `branch_exists_in_canonical` true/false against
+  the real tmp git canonical, `check_branch_collisions` list shape,
+  missing-canonical error, and `create_worktrees` with `reuse_in={...}`
+  asserting no `-b` flag in the resulting git command.
+- `tests/test_cli_phase5.py` — slug normalization warning emitted /
+  suppressed; `--resume` reattach + arg-conflict + missing-workspace
+  errors; `--suffix` next-slug behavior + no-op when no collision;
+  `--resume`/`--suffix` mutual exclusion; updated existing-workspace
+  error message; non-interactive branch collision; interactive happy
+  path with two repos and two independent tmp canonicals; interactive
+  zero-repo; picker reprompt on bad input; interactive resume / suffix /
+  abort on existing slug; interactive collision-reuse yes/no; rejection
+  of stray args when slug omitted; picker default-first sort order.
+
+### Smoke (manual, 2026-05-24)
+
+In an isolated `AGENT_CONTROL_HOME` + `AGENT_WORK_HOME`:
+
+- `agent-spawn "Big Feature" --yes` printed
+  `slug normalized to 'big-feature' (from 'Big Feature')` then created
+  the zero-repo workspace. `metadata.env` had `SLUG="big-feature"` and
+  the slugified `TMUX_WINDOW`.
+- A second `agent-spawn "Big Feature" --yes` errored with the new
+  resume/suffix message naming `big-feature-2`.
+- `agent-spawn big-feature --resume` skipped re-creating files; the
+  tmux step bailed (no tty in the smoke shell, expected — Phase 4
+  behavior).
+- `agent-spawn big-feature --suffix --yes` produced `big-feature-2` on
+  disk.
 
 All in `grilled-decisions.md`. Short version:
 
@@ -242,6 +307,27 @@ All in `grilled-decisions.md`. Short version:
 - **Push notifications stay Post-MVP** (§1). v1 attention model is bell +
   tmux statusline + cockpit window. Reconsider only when the empirical
   signal (bell + statusline insufficient) actually arrives.
+
+## Next: Phase 6 (`agent-jump`)
+
+Spec lives in `ROADMAP.md` Phase 6. Subtasks:
+
+1. **`agent-jump <slug>`** — switch tmux to the workspace window for
+   `<slug>`. From outside tmux, attach to the `agents` session and
+   select the window. The plumbing already exists in `tmux.focus()` and
+   `tmux.ensure_workspace_window()`; the jump command is essentially
+   the focus half without the worktree/bootstrap setup. Clear error
+   when no matching workspace exists on disk.
+2. **`agent-jump blocked`** / **`agent-jump feedback`** — read status
+   files via `status_mod.list_records()`, filter to `BLOCKED` and
+   `NEEDS_FEEDBACK` respectively. Zero matches → clear error. One match
+   → jump. Multiple matches → interactive numbered list (same picker
+   style as Phase 5's repo picker). fzf integration is Post-MVP.
+
+The current `cli.jump` is a parsed-then-`_stub` skeleton; argument
+parsing is already in place. Tests should follow the Phase-5 pattern:
+seed status files via `status.write_status`, stub `tmux.focus` /
+`tmux.open_workspace_window`, drive `input()` via `io.StringIO`.
 
 ## Open design questions (don't decide them speculatively)
 

@@ -95,6 +95,21 @@ def layout_for(slug: str) -> WorkspaceLayout:
     )
 
 
+def next_available_slug(slug: str) -> str:
+    """Return the first ``<slug>-N`` (N≥2) whose workspace dir does not exist.
+
+    Used by ``agent-spawn --suffix`` (and by the interactive suffix branch
+    of the resume prompt). The base slug itself is assumed to be taken;
+    callers should only reach this helper after detecting a collision.
+    """
+    n = 2
+    while True:
+        candidate = f"{slug}-{n}"
+        if not (config.work_home() / candidate).exists():
+            return candidate
+        n += 1
+
+
 # ---------- skeleton creation ----------
 
 

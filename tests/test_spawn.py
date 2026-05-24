@@ -100,6 +100,79 @@ def test_create_worktrees_propagates_git_failure(
     assert calls[0][:3] == ["git", "-C", str(tmp_canonical_repo)]
 
 
+# ---------- branch existence ----------
+
+
+def test_branch_exists_in_canonical_true_after_creation(
+    initialized_hangar: Path,
+    work_home: Path,
+    tmp_canonical_repo: Path,
+) -> None:
+    repo = repos_mod.Repo(
+        "backend", "backend", tmp_canonical_repo, False, "", "origin/main"
+    )
+    assert spawn.branch_exists_in_canonical(repo, "main") is True
+    assert spawn.branch_exists_in_canonical(repo, "no-such-branch") is False
+
+
+def test_check_branch_collisions_lists_only_colliders(
+    initialized_hangar: Path,
+    work_home: Path,
+    tmp_canonical_repo: Path,
+) -> None:
+    repo = repos_mod.Repo(
+        "backend", "backend", tmp_canonical_repo, False, "", "origin/main"
+    )
+    colliders = spawn.check_branch_collisions([repo], "main")
+    assert [r.key for r in colliders] == ["backend"]
+    assert spawn.check_branch_collisions([repo], "feature/never-used") == []
+
+
+def test_branch_exists_errors_on_missing_canonical(
+    tmp_path: Path,
+) -> None:
+    repo = repos_mod.Repo(
+        "ghost", "ghost", tmp_path / "no-such", False, "", "origin/main"
+    )
+    with pytest.raises(spawn.SpawnError, match="canonical repo path missing"):
+        spawn.branch_exists_in_canonical(repo, "main")
+
+
+def test_create_worktrees_reuse_existing_branch(
+    initialized_hangar: Path,
+    work_home: Path,
+    tmp_canonical_repo: Path,
+) -> None:
+    # Pre-create the branch in the canonical so we can ask create_worktrees
+    # to reuse it.
+    subprocess.run(
+        ["git", "-C", str(tmp_canonical_repo), "branch", "preexisting"],
+        check=True, capture_output=True, text=True,
+    )
+    repo = repos_mod.Repo(
+        "backend", "backend-core-nestjs", tmp_canonical_repo, False, "", "origin/main"
+    )
+    layout = workspace.prepare_skeleton(
+        "reuse-test", repos=[repo.name], branch="preexisting"
+    )
+
+    captured: list[list[str]] = []
+
+    def runner(args):
+        captured.append(list(args))
+        return _fake_completed(rc=0)
+
+    spawn.create_worktrees(
+        layout, [repo], branch="preexisting",
+        reuse_in={"backend"}, runner=runner,
+    )
+    # The worktree-add call must NOT use -b when reusing.
+    worktree_calls = [c for c in captured if "worktree" in c]
+    assert len(worktree_calls) == 1
+    assert "-b" not in worktree_calls[0]
+    assert "preexisting" in worktree_calls[0]
+
+
 # ---------- run_bootstraps ----------
 
 

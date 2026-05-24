@@ -186,3 +186,24 @@ def test_prepare_skeleton_respects_tmux_session_override(
     monkeypatch.setenv("AGENT_TMUX_SESSION", "my-agents")
     layout = workspace.prepare_skeleton("alpha")
     assert 'TMUX_SESSION="my-agents"' in layout.metadata_env.read_text(encoding="utf-8")
+
+
+# ---------- next_available_slug ----------
+
+
+def test_next_available_slug_when_first_suffix_is_free(work_home: Path) -> None:
+    (work_home / "alpha").mkdir(parents=True)
+    assert workspace.next_available_slug("alpha") == "alpha-2"
+
+
+def test_next_available_slug_skips_taken_suffixes(work_home: Path) -> None:
+    for name in ("alpha", "alpha-2", "alpha-3"):
+        (work_home / name).mkdir(parents=True)
+    assert workspace.next_available_slug("alpha") == "alpha-4"
+
+
+def test_next_available_slug_when_only_base_exists(work_home: Path) -> None:
+    # work_home itself doesn't need to exist for the helper to work — it
+    # just probes paths under it. Create the base only.
+    (work_home / "solo").mkdir(parents=True)
+    assert workspace.next_available_slug("solo") == "solo-2"
