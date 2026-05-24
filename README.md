@@ -1,5 +1,7 @@
 # Agent Hangar
 
+![Agent Hangar — local control plane for AI coding agents](documentation/hero.png)
+
 Agent Hangar is a local control plane for running parallel AI coding agents in tmux. It spawns isolated workspaces with git worktrees, generates the agent instructions, and surfaces every agent's status — including shared Claude usage quota — so you can see at a glance which agents need attention without flipping between terminal windows.
 
 The hangar metaphor: each agent gets its own bay (a workspace), prepared the same way every time, and a control tower (the cockpit) shows what's where. You stay in the tower; you walk to a bay only when something needs you.
