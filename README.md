@@ -201,30 +201,34 @@ The output looks roughly like:
 
 ## Claude Code statusline integration (for quota)
 
-Claude Code's statusline emits a JSON payload that contains `rate_limits.five_hour.used_percentage`, `rate_limits.five_hour.resets_at`, `rate_limits.seven_day.*`, and `context_window.used_percentage`. Pipe it into `hangar-quota-update`:
+Claude Code's statusline emits a JSON payload that contains `rate_limits.five_hour.used_percentage`, `rate_limits.five_hour.resets_at`, `rate_limits.seven_day.*`, and `context_window.used_percentage`. The hangar ships a wrapper at `scripts/claude-statusline` that pipes the payload into `hangar-quota-update` and then delegates to whatever statusline renderer you point it at.
 
-`~/.local/bin/claude-statusline-hangar` (or fold this into your existing statusline script):
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-payload="$(cat)"
-printf '%s' "$payload" | hangar-quota-update >/dev/null 2>&1 || true
-
-# Keep emitting your normal statusline output.
-printf '%s' "$payload" | your-existing-statusline-renderer
-```
-
-In `~/.claude/settings.json`:
+Point `~/.claude/settings.json` at the bundled wrapper:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.local/bin/claude-statusline-hangar"
+    "command": "/absolute/path/to/agent-hangar/scripts/claude-statusline"
   }
 }
+```
+
+If you already have a statusline script you like (e.g., `~/.claude/statusline-command.sh`), set an env var so the wrapper hands stdout off to it unchanged:
+
+```bash
+# shell rc
+export HANGAR_STATUSLINE_RENDERER="$HOME/.claude/statusline-command.sh"
+```
+
+With no renderer configured, the wrapper still updates the quota snapshot but writes nothing to stdout — Claude's statusline goes blank. That's fine on day one and lets you opt into a richer line whenever you want.
+
+If you'd rather hand-roll the integration (no env var, no extra file), copy this into your existing statusline script:
+
+```bash
+payload="$(cat)"
+printf '%s' "$payload" | hangar-quota-update >/dev/null 2>&1 || true
+# then keep emitting your normal statusline output using "$payload"
 ```
 
 Every Claude Code session refreshes the shared quota file. The cockpit picks up the latest snapshot. Quota integration is best-effort: if Claude's payload shape changes, the cockpit shows `unavailable` for missing fields and nothing else breaks.
