@@ -149,7 +149,19 @@ Re-running `hangar-setup` is idempotent: it adds any missing subdirs and never c
 hangar-checkin
 ```
 
-This creates the `agents` tmux session, opens the `cockpit` window with `hangar-watch` running under `watch -n 2`, and attaches you. You should see an empty grouped dashboard (no workspaces yet). Press `Ctrl-b d` to detach from tmux.
+This creates the `agents` tmux session and two windows inside it: `cockpit` (the dashboard) and `cheatsheet` (a scrollable reference for the tmux shortcuts you'll need). You should see an empty grouped dashboard (no workspaces yet). Press `Ctrl-b d` to detach from tmux.
+
+### Moving between windows
+
+Each agent gets its own tmux window named after its slug, and the cockpit + cheatsheet sit alongside them. The names appear in the status bar at the bottom of the screen — switch between them with:
+
+- `Ctrl-b n` / `Ctrl-b p` — next / previous window
+- `Ctrl-b l` — jump back to the last window you were on
+- `Ctrl-b 0`..`9` — jump to a window by index
+- `Ctrl-b w` — interactive window picker
+- `agent-jump <slug>` — works from any window (or from outside tmux); `agent-jump blocked` / `agent-jump feedback` jump to whichever agent currently needs you
+
+The cockpit dashboard prints a one-line reminder of these at the bottom, so you don't need to memorize them. The `cheatsheet` window has the full reference — press `q` inside `less` to drop to a shell; the window stays open. Re-run `hangar-checkin` if you ever close it.
 
 You're ready to spawn agents.
 
@@ -273,7 +285,7 @@ Commands split by domain. `agent-*` commands deal with agents themselves — one
 | Command               | Purpose                                                                                                                                            |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `hangar-setup`        | One-time bootstrap. Create `~/.agent-control/` layout and seed `repos.yaml` from the bundled hotelkit sample.                                      |
-| `hangar-checkin`      | Open the cockpit window. Create or attach the `agents` tmux session, create or reuse the `cockpit` window with the watched dashboard inside.        |
+| `hangar-checkin`      | Open the cockpit. Create or attach the `agents` tmux session, create or reuse the `cockpit` window (watched dashboard) and the `cheatsheet` window (scrollable tmux reference). |
 | `hangar-watch`        | The rich dashboard render — grouped statuses, quota pane, colors. What `hangar-checkin`'s `watch -n 2` loop calls. Also runnable one-shot.         |
 | `hangar-statusline`   | Emit the compact `[B:n] [F:n] [R:n] [W:n] \| 5h:U%/E% 7d:U%/E%` line consumed by `set -g status-right` in `~/.tmux.conf`. Wired once; not typed.   |
 | `hangar-quota-update` | Plumbing: read Claude statusline JSON from stdin, normalize, write `~/.agent-control/quotas/claude.json`. Wired into the Claude statusline; not typed. |

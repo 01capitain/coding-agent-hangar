@@ -10,12 +10,18 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from importlib.resources import files
+from pathlib import Path
 
 from . import config
 
 COCKPIT_WINDOW = "cockpit"
+CHEATSHEET_WINDOW = "cheatsheet"
 WATCH_COMMAND = "watch -c -n 2 hangar-watch"
 TMUX_BINARY = "tmux"
+
+_CHEATSHEET_PACKAGE = "agent_hangar.templates"
+_CHEATSHEET_FILENAME = "tmux_cheatsheet.txt"
 
 
 class TmuxError(Exception):
@@ -89,6 +95,44 @@ def ensure_cockpit_window(session: str, window: str = COCKPIT_WINDOW) -> None:
         ],
         check=True,
     )
+
+
+def cheatsheet_path() -> Path:
+    """Absolute path to the bundled tmux cheatsheet text file."""
+    return Path(str(files(_CHEATSHEET_PACKAGE).joinpath(_CHEATSHEET_FILENAME)))
+
+
+def _cheatsheet_command(path: Path) -> str:
+    # `less` quits with `q`; falling through to `$SHELL` keeps the window
+    # alive so the operator can `less` it again or run other commands —
+    # otherwise the pane would close and take the window with it.
+    return f"less -- {path}; exec ${{SHELL:-/bin/sh}}"
+
+
+def ensure_cheatsheet_window(
+    session: str, window: str = CHEATSHEET_WINDOW
+) -> bool:
+    """Create a window that displays the bundled tmux cheatsheet via ``less``.
+
+    Returns ``True`` when a new window was created, ``False`` when an
+    existing one was reused. Idempotent — safe to call on every
+    ``hangar-checkin``.
+    """
+    if has_window(session, window):
+        return False
+    target = f"{session}:"
+    _run(["new-window", "-t", target, "-n", window], check=True)
+    _run(
+        [
+            "send-keys",
+            "-t",
+            f"{session}:{window}",
+            _cheatsheet_command(cheatsheet_path()),
+            "Enter",
+        ],
+        check=True,
+    )
+    return True
 
 
 def focus(session: str, window: str = COCKPIT_WINDOW) -> None:
@@ -166,6 +210,12 @@ def open_checkin() -> str:
     ensure_session(session)
     created_window = not has_window(session, COCKPIT_WINDOW)
     ensure_cockpit_window(session)
+    # The cheatsheet window is best-effort — if it fails (e.g. the
+    # bundled file resolution misbehaves) the cockpit is still useful.
+    try:
+        created_cheatsheet = ensure_cheatsheet_window(session)
+    except TmuxError:
+        created_cheatsheet = None
     focus(session)  # may not return if we attach
     parts = []
     parts.append(
@@ -176,4 +226,9 @@ def open_checkin() -> str:
         f"window `{COCKPIT_WINDOW}` "
         + ("created" if created_window else "reused")
     )
+    if created_cheatsheet is not None:
+        parts.append(
+            f"window `{CHEATSHEET_WINDOW}` "
+            + ("created" if created_cheatsheet else "reused")
+        )
     return "; ".join(parts)

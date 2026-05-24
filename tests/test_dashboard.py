@@ -22,6 +22,18 @@ def test_empty_hangar_renders_placeholder(
     assert "USAGE QUOTAS" in out
 
 
+def test_dashboard_footer_includes_tmux_navigation_hint(
+    initialized_hangar: Path, fixed_now: datetime
+) -> None:
+    out = dashboard.render_dashboard(now=fixed_now, use_color=False)
+    # The footer keeps the cockpit operator from needing to look anything
+    # up to switch windows — it refreshes on the same `watch -n 2` tick
+    # as the rest of the dashboard.
+    assert "Ctrl-b" in out
+    assert "cheatsheet" in out
+    assert "agent-jump" in out
+
+
 def test_header_includes_refresh_timestamp(
     initialized_hangar: Path, fixed_now: datetime
 ) -> None:

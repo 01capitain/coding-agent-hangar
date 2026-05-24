@@ -87,7 +87,22 @@ def render_dashboard(
         lines.append("")
 
     lines.append(quota.render_pane(use_color=use_color))
+    lines.append("")
+    lines.append(_render_tmux_hint(use_color))
     return "\n".join(lines)
+
+
+def _render_tmux_hint(use_color: bool) -> str:
+    # The dashboard runs under `watch -n 2` inside the cockpit pane, so this
+    # footer is always in the operator's peripheral vision. Keep it short —
+    # the full reference lives in the `cheatsheet` tmux window.
+    return ansi.style(
+        "tmux: Ctrl-b w  windows  ·  Ctrl-b n/p  next/prev  ·  "
+        "Ctrl-b l  last  ·  `cheatsheet` window for more  ·  "
+        "agent-jump <slug|blocked|feedback>",
+        ansi.DIM,
+        use_color=use_color,
+    )
 
 
 def _render_header(now: datetime, use_color: bool) -> str:

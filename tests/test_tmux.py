@@ -58,19 +58,31 @@ def test_open_checkin_creates_session_and_window(
     assert "split-window" in cmds
     assert "send-keys" in cmds
     assert "select-window" in cmds
-    # send-keys carries the watch command.
-    send = next(c for c in calls if c.args[0] == "send-keys")
-    assert tmux_mod.WATCH_COMMAND in send.args
+    # send-keys carries the watch command somewhere — cheatsheet sends
+    # its own less command too, so we just check the watch one is present.
+    send_args = [tuple(c.args) for c in calls if c.args[0] == "send-keys"]
+    assert any(tmux_mod.WATCH_COMMAND in args for args in send_args)
+    # The cheatsheet window is created with the same checkin call.
+    new_window_names = [
+        c.args[c.args.index("-n") + 1]
+        for c in calls
+        if c.args[0] == "new-window" and "-n" in c.args
+    ]
+    assert tmux_mod.COCKPIT_WINDOW in new_window_names
+    assert tmux_mod.CHEATSHEET_WINDOW in new_window_names
     assert "created" in summary
+    assert tmux_mod.CHEATSHEET_WINDOW in summary
 
 
-def test_open_checkin_reuses_existing_session_and_window(
+def test_open_checkin_reuses_existing_session_and_windows(
     monkeypatch: pytest.MonkeyPatch, tmux_recorder
 ) -> None:
     calls, behaviors = tmux_recorder
     behaviors[("has-session", "-t")] = lambda _args: tmux_mod.TmuxResult(0, "", "")
     behaviors[("list-windows", "-t")] = lambda _args: tmux_mod.TmuxResult(
-        0, f"{tmux_mod.COCKPIT_WINDOW}\n", ""
+        0,
+        f"{tmux_mod.COCKPIT_WINDOW}\n{tmux_mod.CHEATSHEET_WINDOW}\n",
+        "",
     )
     monkeypatch.setenv("TMUX", "/fake/tmux-socket,123,0")
 
@@ -81,6 +93,46 @@ def test_open_checkin_reuses_existing_session_and_window(
     assert "new-window" not in cmds
     assert "select-window" in cmds
     assert "reused" in summary
+    assert tmux_mod.CHEATSHEET_WINDOW in summary
+
+
+def test_open_checkin_creates_cheatsheet_when_only_cockpit_exists(
+    monkeypatch: pytest.MonkeyPatch, tmux_recorder
+) -> None:
+    calls, behaviors = tmux_recorder
+    behaviors[("has-session", "-t")] = lambda _args: tmux_mod.TmuxResult(0, "", "")
+    # Cockpit already exists but the cheatsheet window doesn't.
+    behaviors[("list-windows", "-t")] = lambda _args: tmux_mod.TmuxResult(
+        0, f"{tmux_mod.COCKPIT_WINDOW}\n", ""
+    )
+    monkeypatch.setenv("TMUX", "/fake/tmux-socket,123,0")
+
+    tmux_mod.open_checkin()
+
+    new_window_names = [
+        c.args[c.args.index("-n") + 1]
+        for c in calls
+        if c.args[0] == "new-window" and "-n" in c.args
+    ]
+    assert new_window_names == [tmux_mod.CHEATSHEET_WINDOW]
+    # The cheatsheet command runs `less` on the bundled file.
+    cheatsheet_send = next(
+        c for c in calls
+        if c.args[0] == "send-keys" and f":{tmux_mod.CHEATSHEET_WINDOW}" in c.args[2]
+    )
+    payload = cheatsheet_send.args[3]
+    assert "less" in payload
+    assert str(tmux_mod.cheatsheet_path()) in payload
+    # Cheatsheet command IS executed (trailing Enter, unlike spawn pretype).
+    assert "Enter" in cheatsheet_send.args
+
+
+def test_cheatsheet_path_resolves_to_bundled_file() -> None:
+    path = tmux_mod.cheatsheet_path()
+    assert path.is_file()
+    content = path.read_text(encoding="utf-8")
+    assert "TMUX CHEATSHEET" in content
+    assert "Ctrl-b" in content
 
 
 def test_run_raises_when_tmux_missing(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,0 +1,111 @@
+TMUX CHEATSHEET — Agent Hangar
+==============================
+
+Every shortcut starts with the PREFIX, which is Ctrl-b by default:
+press Ctrl-b, release both keys, THEN press the next key. The prefix
+is not held down.
+
+
+WINDOWS  (the tabs across the bottom of the screen)
+---------------------------------------------------
+
+  Ctrl-b n          next window
+  Ctrl-b p          previous window
+  Ctrl-b l          jump back to the last window you were on
+  Ctrl-b 0 .. 9     jump to a window by its index
+  Ctrl-b w          interactive window picker (arrow keys + Enter)
+  Ctrl-b '          prompt for a window number to jump to
+  Ctrl-b f          find a window by text in its content
+  Ctrl-b ,          rename the current window
+  Ctrl-b &          kill the current window (asks for confirmation)
+  Ctrl-b c          create a new window
+
+In the hangar, every agent has its own window named after the slug
+you spawned with — `cockpit` is the dashboard, `cheatsheet` is this
+window, and the rest are your agents.
+
+
+JUMP FROM ANYWHERE  (works from any window, including outside tmux)
+-------------------------------------------------------------------
+
+  agent-jump <slug>        focus that workspace's tmux window
+  agent-jump blocked       jump to the next BLOCKED agent
+  agent-jump feedback      jump to the next NEEDS_FEEDBACK agent
+  agent-list               plain-text list of every workspace
+
+
+SESSIONS  (the outermost container — usually just `agents`)
+-----------------------------------------------------------
+
+  Ctrl-b d          detach (leave session running in the background)
+  tmux ls           list sessions (run outside tmux)
+  tmux attach       re-attach to the most recent session
+  tmux attach -t agents
+                    re-attach to the hangar session by name
+
+
+PANES  (splits inside one window)
+---------------------------------
+
+  Ctrl-b %          split current pane vertically (left | right)
+  Ctrl-b "          split current pane horizontally (top / bottom)
+  Ctrl-b ←  ↑  ↓  → move focus between panes
+  Ctrl-b o          cycle to the next pane
+  Ctrl-b z          toggle "zoom" — make the current pane fullscreen
+  Ctrl-b x          close the current pane (asks for confirmation)
+  Ctrl-b !          break the current pane out into its own window
+  Ctrl-b {  or  }   swap current pane with the previous / next one
+  Ctrl-b Space      cycle through the built-in pane layouts
+
+The cockpit window is two panes: the dashboard on the left, a free
+shell on the right. The shell pane is the right place to run
+`agent-list`, `agent-status`, `agent-mark-done`, etc.
+
+
+SCROLLBACK / COPY MODE  (your terminal scrollwheel does NOT work inside tmux)
+----------------------------------------------------------------------------
+
+  Ctrl-b [          enter copy mode (then use arrows / PgUp / PgDn)
+  q                 leave copy mode
+  /  then text      search forward in scrollback
+  ?  then text      search backward in scrollback
+  Space             page down (inside copy mode)
+  Enter             copy selection, leave copy mode
+  Ctrl-b ]          paste the most recent selection
+
+
+HANGAR COMMANDS YOU'LL TYPE OFTEN
+---------------------------------
+
+  hangar-checkin                          open / re-attach the cockpit
+  hangar-watch                            one-shot dashboard render
+  agent-spawn                             interactive workspace spawn
+  agent-spawn <slug> <repo> --branch <b>  non-interactive spawn
+  agent-list                              plain-text list of agents
+  agent-jump <slug>                       focus an agent window
+  agent-status <slug> <STATE> "<msg>"     update one agent's status
+  agent-mark-as-blocked <slug> "<msg>"    mark BLOCKED + ring bell
+  agent-mark-done <slug> "<msg>"          mark DONE + ring bell
+  agent-teardown <slug>                   guided workspace removal
+
+
+MISCELLANEOUS
+-------------
+
+  Ctrl-b ?          show ALL keybindings (q to leave)
+  Ctrl-b :          tmux command prompt
+  Ctrl-b t          big clock (q to leave)
+  Ctrl-b r          reload tmux config (only if you've bound it)
+
+
+NOTES
+-----
+
+  - This cheatsheet lives in the `cheatsheet` window. `hangar-checkin`
+    creates it; press `q` to close `less` and drop to a shell — the
+    window stays open so you can `less` it again or run other commands.
+  - If you close the window entirely, run `hangar-checkin` to bring it
+    (and the cockpit) back. The command is idempotent.
+  - The default prefix is Ctrl-b. If you've rebound it (e.g. to Ctrl-a
+    in `~/.tmux.conf`), use yours instead — the rest of the bindings
+    above are the same.
