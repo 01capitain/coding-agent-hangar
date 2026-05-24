@@ -120,15 +120,15 @@ Closing the loop from dashboard back to a specific agent.
 
 Close the workspace lifecycle without destroying work.
 
-- [ ] `agent-mark-done <slug> <summary>` — mirror of `agent-mark-as-blocked`: set state to `DONE`, append to the log, ring the bell, tmux display-message. Lightweight; the user typically reads the summary and either gives the next instruction in the same tmux window or moves on to `agent-teardown`. Does NOT touch worktrees, branches, or the tmux window. (For the rare `PAUSED` state, use the generic `agent-status` — no dedicated wrapper.)
-- [ ] `agent-teardown <slug>` — guided interactive checklist:
-  1. Show workspace path, list of worktrees, per-worktree `git status -sb`.
-  2. Show whether `agent/<slug>/<repo>` is merged into base branch on origin.
-  3. Show uncommitted changes; refuse to proceed without `--force` if any.
-  4. Prompt: "PR opened? [y/N]", "PR merged? [y/N]", "Remove worktree at X? [y/N]", "Delete branch agent/<slug>/<repo>? [y/N]".
-  5. On confirmation: `git worktree remove`, delete branches, archive status file to `~/.agent-control/status/archive/<slug>-<timestamp>.status`, remove workspace dir.
+- [x] `agent-mark-done <slug> <summary>` — mirror of `agent-mark-as-blocked`: sets state to `DONE`, appends to the log, rings the bell, runs `tmux display-message`. Does NOT touch worktrees, branches, or the tmux window. (For the rare `PAUSED` state, use the generic `agent-status` — no dedicated wrapper.)
+- [x] `agent-teardown <slug>` — guided interactive checklist:
+  1. Shows workspace path, branch from `metadata.env`, list of worktrees, per-worktree `git status --short --branch`.
+  2. Shows whether the operator-supplied branch is an ancestor of the configured base branch (`origin/main` by default).
+  3. Refuses to proceed when any worktree has uncommitted changes unless `--force` is passed.
+  4. Prompts in order: "PR opened? [y/N]", "PR merged? [y/N]" (info-only), then per-repo "Remove worktree? [y/N]" + "Delete branch? [y/N]".
+  5. On confirmation: `git worktree remove` (with `--force` when `--force` is set), `git branch -d` (or `-D` with `--force`), archives the status file to `~/.agent-control/status/archive/<slug>-<timestamp>.status`, removes the workspace dir only when every worktree was removed.
 
-**Exit criterion:** An agent can mark itself done from inside its session; a merged feature can be torn down without surprises; uncommitted work blocks teardown; archived status files exist after teardown.
+**Exit criterion:** An agent can mark itself done from inside its session; a merged feature can be torn down without surprises; uncommitted work blocks teardown; archived status files exist after teardown. ✓ (202 tests passing; smoke-validated 2026-05-24.)
 
 ---
 

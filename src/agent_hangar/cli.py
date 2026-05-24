@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from . import ansi as ansi_mod
 from . import config
@@ -21,6 +22,7 @@ from . import quota as quota_mod
 from . import repos as repos_mod
 from . import spawn as spawn_mod
 from . import status as status_mod
+from . import teardown as teardown_mod
 from . import tmux as tmux_mod
 from . import workspace as workspace_mod
 
@@ -799,8 +801,33 @@ def mark_done() -> None:
     )
     parser.add_argument("slug")
     parser.add_argument("summary", help="One-line summary of what was done.")
-    parser.parse_args()
-    _stub("agent-mark-done")
+    args = parser.parse_args()
+
+    try:
+        record = status_mod.write_status(args.slug, "DONE", args.summary)
+    except status_mod.StatusError as exc:
+        print(f"agent-mark-done: {exc}", file=sys.stderr)
+        sys.exit(_USER_ERROR_EXIT)
+
+    _notify_tmux_done(record.slug, record.summary)
+    # ASCII bell — rings the terminal even outside tmux.
+    sys.stderr.write("\a")
+    sys.stderr.flush()
+    print(f"[{record.slug}] DONE: {record.summary}")
+
+
+def _notify_tmux_done(slug: str, message: str) -> None:
+    if shutil.which("tmux") is None:
+        return
+    try:
+        subprocess.run(
+            ["tmux", "display-message", f"[{slug}] DONE: {message}"],
+            check=False,
+            capture_output=True,
+            timeout=2,
+        )
+    except (subprocess.SubprocessError, OSError):
+        pass
 
 
 def teardown() -> None:
@@ -816,7 +843,123 @@ def teardown() -> None:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Allow teardown of workspaces with uncommitted changes.",
+        help=(
+            "Allow teardown of workspaces with uncommitted changes, and "
+            "force-delete branches that haven't been merged."
+        ),
     )
-    parser.parse_args()
-    _stub("agent-teardown")
+    args = parser.parse_args()
+
+    if not config.status_dir().is_dir():
+        print(
+            "agent-teardown: control directory missing. Run `hangar-setup` first.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    slug = _normalize_with_warning(args.slug, prog="agent-teardown")
+    layout = workspace_mod.layout_for(slug)
+    if not layout.workspace_dir.exists():
+        print(
+            f"agent-teardown: no workspace at {layout.workspace_dir}",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    metadata = teardown_mod.read_metadata(layout)
+    branch = metadata.get("BRANCH", "")
+    base_branch = config.base_branch()
+
+    worktrees = teardown_mod.find_worktree_dirs(layout)
+
+    print(f"Workspace: {layout.workspace_dir}")
+    if branch:
+        print(f"Branch:    {branch}")
+    if not worktrees:
+        print("Worktrees: (none — zero-repo workspace)")
+    else:
+        print(f"Worktrees ({len(worktrees)}):")
+
+    statuses: list[teardown_mod.WorktreeStatus] = []
+    for worktree in worktrees:
+        try:
+            ws = teardown_mod.probe_worktree(worktree, base_branch)
+        except teardown_mod.TeardownError as exc:
+            print(f"agent-teardown: {exc}", file=sys.stderr)
+            sys.exit(_USER_ERROR_EXIT)
+        statuses.append(ws)
+        merged_label = {
+            True: f"merged into {base_branch}",
+            False: f"NOT merged into {base_branch}",
+            None: f"merge check unavailable ({base_branch} not found?)",
+        }[ws.merged_into_base]
+        dirty_label = "DIRTY" if ws.uncommitted else "clean"
+        print(f"  - {worktree.name}  branch={ws.branch}  {dirty_label}  {merged_label}")
+        if ws.short_status:
+            for line in ws.short_status.splitlines():
+                print(f"      {line}")
+
+    dirty = [s for s in statuses if s.uncommitted]
+    if dirty and not args.force:
+        names = ", ".join(s.path.name for s in dirty)
+        print(
+            f"agent-teardown: uncommitted changes in {names}. "
+            "Re-run with --force to tear down anyway.",
+            file=sys.stderr,
+        )
+        sys.exit(_USER_ERROR_EXIT)
+
+    # Info-only prompts (no gating); user's answers are discarded.
+    _confirm("PR opened? [y/N] ")
+    _confirm("PR merged? [y/N] ")
+
+    # Resolve each worktree's canonical BEFORE removing it — once the
+    # worktree dir is gone, `git -C <path>` can't tell us which canonical
+    # it belonged to.
+    canonicals: dict[Path, Path] = {}
+    for ws in statuses:
+        try:
+            canonicals[ws.path] = teardown_mod.canonical_for(ws.path)
+        except teardown_mod.TeardownError as exc:
+            print(f"agent-teardown: {exc}", file=sys.stderr)
+            sys.exit(_USER_ERROR_EXIT)
+
+    removed_worktrees: set[Path] = set()
+    for ws in statuses:
+        if not _confirm(f"OK to remove worktree at {ws.path}? [y/N] "):
+            print(f"  skipped: {ws.path}")
+            continue
+        try:
+            teardown_mod.remove_worktree(ws.path, force=args.force)
+            removed_worktrees.add(ws.path)
+            print(f"  removed worktree: {ws.path}")
+        except teardown_mod.TeardownError as exc:
+            print(f"agent-teardown: {exc}", file=sys.stderr)
+            sys.exit(_USER_ERROR_EXIT)
+
+        if not ws.branch or ws.branch == "HEAD":
+            continue
+        if not _confirm(f"Delete branch '{ws.branch}' in {ws.path.name}? [y/N] "):
+            print(f"  kept branch: {ws.branch}")
+            continue
+        try:
+            teardown_mod.delete_branch(
+                canonicals[ws.path], ws.branch, force=args.force
+            )
+            print(f"  deleted branch: {ws.branch}")
+        except teardown_mod.TeardownError as exc:
+            print(f"agent-teardown: {exc}", file=sys.stderr)
+
+    archive_path = teardown_mod.archive_status_file(slug)
+    if archive_path is not None:
+        print(f"archived status: {archive_path}")
+
+    if not statuses or removed_worktrees == {s.path for s in statuses}:
+        teardown_mod.remove_workspace_dir(layout)
+        print(f"removed workspace dir: {layout.workspace_dir}")
+    else:
+        kept = [s.path for s in statuses if s.path not in removed_worktrees]
+        print(
+            f"workspace dir kept ({layout.workspace_dir}); "
+            f"{len(kept)} worktree(s) still inside."
+        )

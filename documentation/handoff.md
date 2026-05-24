@@ -11,8 +11,8 @@ Last updated: 2026-05-24
 
 ## Status at a glance
 
-- **Phases 0, 1, 2, 3, 4, 5, 6 complete.** Phase 7 ahead.
-- **176 tests passing**, ruff clean. Working tree had Phase-6 changes
+- **All seven phases complete — v1 MVP DoD reached.**
+- **202 tests passing**, ruff clean. Working tree had Phase-7 changes
   uncommitted at end of session — push status is whatever git says
   when you read this.
 - Local validation done end-to-end:
@@ -61,7 +61,7 @@ All three should be silent-on-success. Then look at:
 | 4 — `agent-spawn` non-interactive | ✅ | `agent-spawn <slug> [repos...] --branch <name>` + scaffolding + worktree + background bootstrap + tmux window | 136 |
 | 5 — `agent-spawn` interactive + resume | ✅ | bare `agent-spawn` prompts; `--resume` / `--suffix`; slug normalize warning; branch-collision pre-check (interactive reuse) | 163 |
 | 6 — `agent-jump` | ✅ | `<slug>`, `blocked`, `feedback`; multi-match picker; clear errors | 176 |
-| 7 — Done signal + teardown | ⏳ Next | `agent-mark-done`, `agent-teardown` | — |
+| 7 — Done signal + teardown | ✅ | `agent-mark-done`, `agent-teardown` (guided checklist, dirty refuse w/o `--force`, status archive) | 202 |
 
 `agent-mark-done` is a stub but its shape is fully decided: it mirrors
 `agent-mark-as-blocked` (state + bell + tmux display-message). Implementation
@@ -391,37 +391,129 @@ In an isolated `AGENT_CONTROL_HOME` + `AGENT_WORK_HOME`:
   tmux focus (which bailed in the non-tty smoke shell — expected,
   same as the Phase-4 and Phase-5 smokes).
 
-## Next: Phase 7 (`agent-mark-done` + `agent-teardown`)
+## Phase 7 — what shipped
 
-Spec lives in `ROADMAP.md` Phase 7 and `grilled-decisions.md` §10.
+The last phase closed the workspace lifecycle.
 
-1. **`agent-mark-done <slug> <summary>`** — copy-paste of
-   `cli.blocked()` with `DONE` instead of `BLOCKED`. State transition +
-   bell + tmux display-message. Does NOT touch worktrees, branches, or
-   the tmux window. The shape is already in the CLI (`cli.mark_done`
-   parses args and exits via `_stub`); fill the body.
-2. **`agent-teardown <slug>` (guided checklist).** The big one. New
-   module — probably `agent_hangar/teardown.py` — that:
-   1. Loads workspace layout + reads `.agent/metadata.env` to get the
-      repo list.
-   2. For each repo: runs `git status -sb` in the worktree, checks
-      whether `<branch>` is merged into the canonical's `origin/main`
-      (or the configured base branch).
-   3. Refuses to proceed without `--force` if any worktree has
-      uncommitted changes. Same rule applies if any branch isn't merged
-      AND the user hasn't confirmed it's intentional.
-   4. Sequentially prompts: "PR opened? [y/N]", "PR merged? [y/N]",
-      "OK to remove worktree at X? [y/N]", "OK to delete agent branch
-      <branch>? [y/N]".
-   5. On all-yes: `git worktree remove` per repo, delete branches,
-      archive the status file to `~/.agent-control/status/archive/
-      <slug>-<timestamp>.status`, remove the workspace dir, optionally
-      kill the tmux window (decision pending — see grilled-decisions
-      §10 "done signal" wording).
+### CLI surface
 
-Tests will need a real tmp git canonical + worktree for the
-checklist's git probes, and `io.StringIO` for the prompt chain. Reuse
-the Phase-4/5 fixture style.
+```
+agent-mark-done <slug> <summary>     # DONE state + bell + tmux display-message
+agent-teardown <slug> [--force]      # guided checklist: remove worktrees,
+                                     # delete branches, archive status, rm -r
+```
+
+`agent-mark-done` is the silent twin of `agent-mark-as-blocked` — same
+plumbing, different state and message text. It does NOT touch
+worktrees, branches, or the tmux window; teardown is the dedicated
+destructive path.
+
+`agent-teardown` is interactive and irreversible. Without `--force` it
+refuses to proceed when any worktree has uncommitted changes, and uses
+`git branch -d` (which refuses unmerged branches). With `--force`,
+`git worktree remove --force` and `git branch -D` are used.
+
+### Modules
+
+- `teardown.py` (new) — the destructive mechanics, with no stdin or
+  output of its own:
+  - `read_metadata(layout)` parses `.agent/metadata.env` lines of the
+    form `KEY="value"` into a dict; missing file returns `{}`.
+  - `find_worktree_dirs(layout)` lists direct workspace children with
+    a `.git` entry (so non-worktree subdirs like `notes/` are ignored).
+  - `probe_worktree(worktree, base_branch)` returns a frozen
+    `WorktreeStatus` dataclass with `branch`, `short_status`,
+    `uncommitted`, `merged_into_base` (tri-state: True / False / None
+    when git can't decide). The merged check uses
+    `git merge-base --is-ancestor <branch> <base>`.
+  - `canonical_for(worktree)` uses
+    `git rev-parse --git-common-dir` and returns the canonical repo
+    path. The orchestrator caches this **before** removing each
+    worktree because `git -C <gone-path>` can't resolve it after.
+  - `remove_worktree`, `delete_branch`, `archive_status_file`,
+    `remove_workspace_dir`. Subprocess calls route through an injected
+    `runner` for tests; the archive timestamp is injectable too.
+- `cli.py` — `mark_done` mirrors `blocked` (new `_notify_tmux_done`
+  helper). `teardown` is the new orchestrator that reads metadata,
+  prints the per-worktree report, dirty-checks against `--force`, fires
+  info prompts (PR opened/merged — answers discarded), then loops over
+  worktrees with remove + delete-branch prompts. After the loop:
+  archive the status file, and remove the workspace dir only when every
+  worktree was successfully removed (otherwise leave it with a clear
+  "workspace dir kept" line).
+
+The previously empty `agent_hangar/clean.py` placeholder was removed in
+this phase — it was a stale relic from the `agent-clean → agent-teardown`
+rename and the real module ended up at `teardown.py` instead.
+
+### Tests
+
+202 total (26 new in Phase 7):
+
+- `tests/test_teardown.py` (15): metadata parse + missing; worktree
+  discovery (worktree-only, skips non-`.git` subdirs); probe for clean
+  + merged, uncommitted, and diverged-not-merged; `canonical_for`
+  round-trip; `remove_worktree` clean and `--force` paths;
+  `delete_branch` safe-refuses unmerged then force succeeds; archive
+  timestamps the file correctly and returns `None` for missing source;
+  `remove_workspace_dir` recursive + idempotent.
+- `tests/test_cli_phase7.py` (11): mark_done writes state + rings bell
+  + calls tmux + survives missing tmux; teardown errors without setup
+  / for missing workspace / for dirty-without-force; full yes-path
+  clears worktree + branch + archives status + removes workspace dir;
+  zero-repo workspace skips worktree prompts and still removes the
+  dir; user says no to worktree removal → kept + workspace dir
+  preserved; says yes to worktree but no to branch → branch kept;
+  `--force` proceeds through dirty + diverged; slug normalization
+  warning is attributed to `agent-teardown`.
+
+### Smoke (manual, 2026-05-24)
+
+In an isolated `AGENT_CONTROL_HOME` + `AGENT_WORK_HOME`:
+
+- `agent-mark-done alpha "shipped phase 7"` wrote `STATE="DONE"` and
+  the new summary into the status file.
+- A zero-repo workspace teardown (`agent-teardown planning`) printed
+  the workspace header with `Worktrees: (none — zero-repo workspace)`,
+  ran only the PR-opened / PR-merged info prompts, archived the
+  status file to `status/archive/planning-<ts>.status`, and removed
+  the workspace dir.
+
+## v1 MVP — status
+
+All twelve DoD items in `ROADMAP.md` "v1 MVP" hold:
+
+1. `hangar-setup` ✓
+2. `agent-spawn` interactive + non-interactive, zero-repo + resume ✓
+3. `agent-status` + `agent-mark-as-blocked` ✓
+4. `hangar-watch` (grouped, stale flagging, quota pane) ✓
+5. `hangar-statusline` ✓
+6. `hangar-checkin` ✓
+7. `agent-jump <slug|blocked|feedback>` ✓
+8. `hangar-quota-update` ✓
+9. Cockpit still renders when quota data is missing ✓
+10. `agent-list` ✓
+11. `agent-mark-done` + `agent-teardown` (guided, `--force` for dirty) ✓
+12. README + grilled-decisions current — see "Side items unresolved"
+    below for the small README gap that still wants attention.
+
+## Where to go next
+
+Post-MVP items from `ROADMAP.md` are the natural follow-ups; pick
+based on what hurts in real use after a week or two of dogfooding.
+The likeliest first signals:
+
+- **Bell vs notification.** If the audio bell + tmux statusline still
+  miss attention transitions, push notifications + `agent-notify` are
+  next (Post-MVP §1).
+- **PR status per workspace.** If READY workspaces start piling up and
+  it's hard to tell which are merged vs awaiting review, wire
+  `gh pr view` per worktree into the dashboard.
+- **`agent-pr <slug>`.** If we keep hand-rolling the push + open-PR
+  step at harvest time, codify it.
+
+Don't speculatively pull these forward. Each waits for an empirical
+nudge.
 
 ## Open design questions (don't decide them speculatively)
 
